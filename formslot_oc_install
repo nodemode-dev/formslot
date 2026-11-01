@@ -2,14 +2,54 @@
 set -e
 cd "$(dirname "$0")"
 
-missing=0
-command -v git >/dev/null || { echo "git is required: https://git-scm.com"; missing=1; }
-command -v cargo >/dev/null || { echo "Rust 1.90 or newer is required: https://rustup.rs"; missing=1; }
-[ "$missing" = "0" ] || exit 1
+usage() {
+  cat <<'USAGE'
+./formslot_oc_install          check git and cargo and build the release binary here (run from source with ./formslot)
+./formslot_oc_install --user   also copy the binary to ~/.local/bin/formslot so hooks find formslot on PATH
+In an unpacked release folder, --user copies the binary beside this script and builds nothing.
+USAGE
+}
 
-cargo build --release --locked -p formslot-cli
+user=0
+case "${1:-}" in
+  "") ;;
+  --user) user=1 ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
 
+if [ -d cli ] && [ -d core ]; then
+  missing=0
+  command -v git >/dev/null || { echo "git is required: https://git-scm.com"; missing=1; }
+  command -v cargo >/dev/null || { echo "Rust 1.90 or newer is required: https://rustup.rs"; missing=1; }
+  [ "$missing" = "0" ] || exit 1
+
+  cargo build --release --locked -p formslot-cli
+  built="${CARGO_TARGET_DIR:-target}/release/formslot-cli"
+
+  echo
+  echo "formslot is ready to run from source. Start the service with: ./formslot serve"
+  echo "Check it with: ./formslot status"
+  echo "Check this computer with: ./formslot doctor"
+else
+  built="./formslot"
+  [ -x "$built" ] || { echo "no formslot binary beside this script"; exit 1; }
+fi
+
+[ "$user" = "1" ] || exit 0
+
+dest="$HOME/.local/bin"
+mkdir -p "$dest"
+cp "$built" "$dest/formslot.new"
+chmod 755 "$dest/formslot.new"
+mv -f "$dest/formslot.new" "$dest/formslot"
 echo
-echo "formslot is ready to run from source. Start the service with: ./formslot serve"
-echo "Check it with: ./formslot status"
-echo "Check this computer with: ./formslot doctor"
+echo "Installed $dest/formslot ($("$dest/formslot" version 2>&1 | head -1))"
+case ":$PATH:" in
+  *":$dest:"*) echo "$dest is already on your PATH, so Claude Code hooks find formslot." ;;
+  *)
+    echo "$dest is not on your PATH yet. Your shell profile was not changed. Add this line to ~/.profile, ~/.zshrc or ~/.bashrc, then open a new terminal:"
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    ;;
+esac
+echo "Connect a repository with: formslot install <repo>"

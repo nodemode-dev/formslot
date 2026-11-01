@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+skill=formslot-lookup
+src="plugin/formslot/skills/$skill"
+dist="${FORMSLOT_DIST_DIR:-$root/dist}"
+out="$dist/$skill.skill"
+validator="${VALIDATE_SKILL:-}"
+
+if [ -z "$validator" ]; then
+  for c in /root/.claude/skills/synced/*/god-tier-skill-creator/scripts/validate_skill.py "$HOME"/.claude/skills/*/god-tier-skill-creator/scripts/validate_skill.py; do
+    [ -f "$c" ] && { validator="$c"; break; }
+  done
+fi
+
+die() { echo "[formslot] $*" >&2; exit 1; }
+[ -d "$src" ] || die "$src is missing"
+command -v python3 >/dev/null || die "python3 is required for the gates"
+command -v zip >/dev/null || die "zip is required"
+[ -n "$validator" ] && [ -f "$validator" ] || die "validate_skill.py not found; set VALIDATE_SKILL to its path"
+
+count="$(find "$src" -iname 'SKILL.md' | wc -l | tr -d ' ')"
+[ "$count" = "1" ] && [ -f "$src/SKILL.md" ] || die "the skill folder must hold exactly one SKILL.md"
+[ -z "$(find "$src" -iname 'README*' | head -1)" ] || die "the skill folder must not hold a README"
+
+python3 -I "$validator" "$src"
+
+python3 -I - "$src/SKILL.md" "$skill" <<'PY'
+import re, sys, unicodedata
+path, folder = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8").read()
+m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+if not m:
+    sys.exit("frontmatter missing")
+fm = m.group(1)
+name = re.search(r"^name:\s*(.+)$", fm, re.M)
+desc = re.search(r"^description:\s*(.+)$", fm, re.M)
+if not name or not desc:
+    sys.exit("name and description are required")
+n, d = name.group(1).strip(), desc.group(1).strip()
+if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", n) or len(n) > 64 or n != folder:
+    sys.exit("name must be lowercase letters, digits and hyphens, at most 64, equal to the folder name")
+if len(d) > 1024:
+    sys.exit("description is longer than 1024 characters")
+if re.search(r"</?[A-Za-z][^>]*>", fm):
+    sys.exit("frontmatter holds XML-like tags")
+if "—" in text:
+    sys.exit("U+2014 found")
+for ch in text:
+    if unicodedata.category(ch) == "So" or 0x1F000 <= ord(ch) <= 0x1FAFF:
+        sys.exit("emoji found")
+PY
+
+mkdir -p "$dist"
+rm -f "$out"
+( cd "$(dirname "$src")" && zip -qr -X "$out" "$skill" )
+echo "[formslot] wrote $out"
+unzip -l "$out"

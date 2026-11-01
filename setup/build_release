@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+usage() {
+  cat <<'USAGE'
+setup/build_release          build the release binary and stage dist/formslot-vX.Y.Z-<os>-<arch>/ and its .tar.gz
+  FORMSLOT_DIST_DIR=<dir>    stage somewhere other than ./dist
+  CARGO_TARGET_DIR=<dir>     build somewhere other than ./target
+On Windows run setup\build_release.bat. The version is the workspace version in Cargo.toml.
+USAGE
+}
+
+case "${1:-}" in
+  "") ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+die() { echo "[formslot] $*" >&2; exit 1; }
+say() { echo "[formslot] $*"; }
+
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env" || true
+command -v cargo >/dev/null || die "Rust 1.90 or newer is required: https://rustup.rs"
+
+case "$(uname -s)" in
+  Darwin) os=macos ;;
+  Linux) os=linux ;;
+  *) die "build_release runs on macOS and Linux; on Windows run setup\\build_release.bat" ;;
+esac
+case "$(uname -m)" in
+  x86_64|amd64) arch=x86_64 ;;
+  arm64|aarch64) arch=aarch64 ;;
+  *) arch="$(uname -m)" ;;
+esac
+
+version="$(sed -n 's/^version = "\([0-9][0-9.]*\)".*/\1/p' Cargo.toml | head -1)"
+[ -n "$version" ] || die "no workspace version found in Cargo.toml"
+
+say "building formslot-cli v$version for $os-$arch"
+cargo build --release --locked -p formslot-cli
+
+bin="${CARGO_TARGET_DIR:-target}/release/formslot-cli"
+[ -x "$bin" ] || die "the release binary is missing at $bin"
+
+dist="${FORMSLOT_DIST_DIR:-$root/dist}"
+name="formslot-v$version-$os-$arch"
+stage="$dist/$name"
+rm -rf "$stage" "$dist/$name.tar.gz"
+mkdir -p "$stage/plugin" "$stage/data"
+
+cp "$bin" "$stage/formslot"
+chmod 755 "$stage/formslot"
+cp LICENSE NOTICE.md README.md formslot_oc_install "$stage/"
+chmod 755 "$stage/formslot_oc_install"
+cp -R plugin/formslot "$stage/plugin/formslot"
+cp -R data/. "$stage/data/"
+
+if command -v sha256sum >/dev/null; then sum() { sha256sum "$@"; }; else sum() { shasum -a 256 "$@"; }; fi
+( cd "$stage" && find . -type f ! -name SHA256SUMS | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r f; do sum "$f"; done > SHA256SUMS )
+
+( cd "$dist" && tar -czf "$name.tar.gz" "$name" )
+( cd "$dist" && sum "$name.tar.gz" > "$name.tar.gz.sha256" )
+
+say "staged $stage"
+say "archive $dist/$name.tar.gz"

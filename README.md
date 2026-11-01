@@ -40,6 +40,43 @@ formslot indexes every Form app's repository at exact commits into one deduplica
 
 The data folder is `~/.formslot` (`FORMSLOT_DATA_DIR` moves it); `FORMSLOT_PORT` moves the port, `0` picks a free one.
 
+## Install
+
+### From source
+
+Needs git and Rust 1.90 or later. `./formslot_oc_install` (`formslot_oc_install.bat` on Windows) checks both and builds the release binary; `./formslot` (`formslot.bat`) then runs it, rebuilding when the sources changed.
+
+### From a release
+
+`setup/build_release` (`setup\build_release.bat` on Windows) builds `cargo build --release --locked -p formslot-cli` and stages `dist/formslot-vX.Y.Z-<os>-<arch>/` with the binary named `formslot` (`formslot.exe` on Windows), `LICENSE`, `NOTICE.md`, `README.md`, the installer script, `plugin/formslot/`, `data/` and a `SHA256SUMS` file, then packs it as `.tar.gz` (`.zip` on Windows) beside a `.sha256` file. The release is built on the machine it is for: run the script on macOS (`aarch64` or `x86_64`), on Linux and on Windows. `data/declines.json` is also compiled into the binary; `data/slots/` is read from disk by `formslot slot seed data/slots`, so keep that folder beside the binary.
+
+```bash
+tar -xzf formslot-vX.Y.Z-linux-x86_64.tar.gz
+cd formslot-vX.Y.Z-linux-x86_64
+sha256sum -c SHA256SUMS      # shasum -a 256 -c SHA256SUMS on macOS
+./formslot version
+```
+
+### On your PATH with `--user`
+
+Claude Code hooks call `formslot`, so it has to be on PATH. `./formslot_oc_install --user` copies the binary to `~/.local/bin/formslot` (macOS and Linux) and `formslot_oc_install.bat --user` copies it to `%LOCALAPPDATA%\Programs\formslot\formslot.exe`. Run from a source checkout it builds first; run from an unpacked release it copies the binary beside it. It prints what it did and, when the folder is not on PATH, the line to add yourself (`export PATH="$HOME/.local/bin:$PATH"`, or a one-line PowerShell command on Windows). It never edits a shell profile or the registry. Without `--user` the installer behaves as before.
+
+## Start the service and connect a repository
+
+```bash
+formslot start                 # background service on 127.0.0.1, prints its port and pid
+formslot status
+formslot doctor                # includes a check that hooks can find formslot
+formslot install <repo>        # writes the plugin files and hooks into that repository
+formslot add <repo>            # index it
+```
+
+`formslot stop` ends the service; it also stops by itself after ten idle minutes.
+
+## The lookup skill
+
+`setup/package_skill` checks `plugin/formslot/skills/formslot-lookup/` against the skill gates (name rules, description of at most 1024 characters, no XML-like tags in the frontmatter, no emoji, no U+2014, no README, exactly one `SKILL.md`; it runs `validate_skill.py` from the god-tier skill creator, found under `~/.claude/skills` or named by `VALIDATE_SKILL`) and writes `dist/formslot-lookup.skill`, a zip with the `formslot-lookup/` folder at its root.
+
 ## Where formslot sits in the family
 
 | Role | App |
