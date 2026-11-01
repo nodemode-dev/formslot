@@ -142,3 +142,27 @@ The estimate is `ceil(bytes / 3.6)` for code and envelopes (done as `ceil(bytes 
 - logged: v0.7.0 · 2026-10-30
 
 `crate::search::index::sync` runs in the index transaction after `refresh_licences`, so a failed sync rolls the whole index run back. Its cost on an unchanged reindex is one DELETE and one SELECT (formvis: 58 ms for a full reindex with nothing to read); a first index adds one blob read per file that has units. It must stay before `memory::after_index`, which does not depend on it, and after the units are written, which happens while entries are processed.
+
+### core/src/search/mod.rs · retrieve_with
+
+- refers-to: core/src/search/mod.rs :: retrieve_with
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+Owner rules and declines were never reaching the ranking for most rule questions: one memory query with a pool of 20 was shared with 6,000 HASHOUT and tombstone records, which are long and crowd out the short rules before the partition. The two kinds are now queried separately (`lexical::memory_by`). Putting rules straight into the fusion at weight 2.0 then flooded the top ranks of ordinary code tasks (R@1 fell from 0.340 to 0.245), so a rule enters the fusion only when it holds at least 30 percent of the task's stemmed terms (`lexical::covered`) and at most four rules enter. Tried and dropped on the tuning half: coverage 0.5 (rules missed, R@10 0.796) and 0.2 (R@1 0.279). Weight stays 2.0. Held-out effect: R@10 0.824 to 0.838, R@1 0.392 to 0.378 (rules sometimes outrank the right file on tasks that only mention a rule word).
+
+### core/src/search/pack.rs · build_with
+
+- refers-to: core/src/search/pack.rs :: build_with
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+`build` is split so a caller can hand in a `Retrieval` (the evaluation's dense arm passes one fused with the dense list). Two pack changes. First, P1 gets a `files:` line after the unit lines: the next files by summed fused score of their units (top 60 unit hits, tests excluded, files already shown skipped), up to 14 at T4 and 30 at T16, inside the same P1 room. A file path costs about 10 tokens, so it gives an agent more places to open for far less than an excerpt; the cost is precision, because file 15 is a weak candidate, and the excerpts get slightly less room (mean pack 3797 to 3833 tokens, all still under 4,000). This is the main source of the R@4k rise and should not be read as better ranking. Second, an owner rule that is already in the stable prefix P0 is restated in P2 when it is among the first five fused hits (at most two): P0 is a cache prefix far from the task, and a rule question is answered best by the rule next to the task. The restated lines cost about 70 tokens each and only appear when the rule ranks high.
+
+### core/src/eval.rs · select_half, run_fused, run_dense
+
+- refers-to: core/src/eval.rs :: run_fused
+- kind: explainer
+- logged: v0.10.2 · 2026-10-30
+
+`--half even|odd` keeps gold lines by line-number parity (even is the tuning half). `run_fused` serves the formslot and dense arms: it calls `search::retrieve_with` with the arm's extra lists, then `pack::build_with` on the same retrieval, so the ranking and the pack come from one search (before, the search ran twice). `run_dense` exists only with `--features dense`: it embeds each task, queries `unit_vec` directly (the same SQL as `dense::vectors::nearest`, which is private to a file outside this change; making `nearest` public would remove the copy) and fuses the 100 nearest units at weight 1.0. A default build keeps the arm as not run with the reason. In this session the dense build compiled with no warnings, the model and tokenizer were fetched into a scratch copy and onnxruntime 1.31.1 came from the pip wheel, but embedding the 17,608 formvis units took 10 minutes for 1,152 units on two cores (about 2.5 hours in all), so the arm was not run.

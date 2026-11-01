@@ -12,6 +12,9 @@ use crate::git::Repo;
 pub const P0_MAP_TOKENS: usize = 650;
 pub const P0_RULES_TOKENS: usize = 350;
 pub const P1_SHARE_PERCENT: usize = 35;
+const RESTATE_WITHIN: usize = 5;
+const RESTATE_MAX: usize = 2;
+const FILE_AGGREGATE_HITS: usize = 60;
 const STYLE_KINDS: [&str; 4] = ["selector", "element_id", "style", "custom_property"];
 pub const ESTIMATOR: &str = "ceil(bytes / 3.6) for code and envelopes, ceil(bytes / 4) for prose";
 
@@ -71,6 +74,14 @@ impl Tier {
             Tier::T1 => 0,
             Tier::T4 => 10,
             Tier::T16 => 24,
+        }
+    }
+
+    fn file_lines(self) -> usize {
+        match self {
+            Tier::T1 => 0,
+            Tier::T4 => 14,
+            Tier::T16 => 30,
         }
     }
 
@@ -361,6 +372,17 @@ pub fn build(
     budget: usize,
 ) -> crate::Result<Pack> {
     let found = super::retrieve(conn, std::slice::from_ref(target), Some(target.id), task)?;
+    build_with(conn, target, task, tier, budget, found)
+}
+
+pub fn build_with(
+    conn: &Connection,
+    target: &Target,
+    task: &str,
+    tier: Tier,
+    budget: usize,
+    found: super::Retrieval,
+) -> crate::Result<Pack> {
     let (p0, rule_ids) = build_p0(conn, target)?;
     let p0_tokens = p0.tokens();
     let tier = if tier.with_prefix() && p0_tokens * 2 > budget { Tier::T1 } else { tier };
@@ -398,6 +420,40 @@ pub fn build(
             p1.push(&line, Kind::Code);
             count += 1;
         }
+        let mut listed: Vec<&str> = Vec::new();
+        for h in found.hits.iter().filter(|h| h.kind == "unit" && !STYLE_KINDS.contains(&h.unit_kind.as_str())).take(count) {
+            if !listed.contains(&h.path.as_str()) {
+                listed.push(h.path.as_str());
+            }
+        }
+        let mut totals: Vec<(&str, f64)> = Vec::new();
+        for h in found
+            .hits
+            .iter()
+            .filter(|h| h.kind == "unit" && !STYLE_KINDS.contains(&h.unit_kind.as_str()) && !super::is_test_path(&h.path))
+            .take(FILE_AGGREGATE_HITS)
+        {
+            match totals.iter_mut().find(|t| t.0 == h.path.as_str()) {
+                Some(t) => t.1 += h.score,
+                None => totals.push((h.path.as_str(), h.score)),
+            }
+        }
+        totals.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(b.0)));
+        let mut more: Vec<&str> = Vec::new();
+        for (path, _) in totals.iter().filter(|t| !listed.contains(&t.0)) {
+            if more.len() >= tier.file_lines() {
+                break;
+            }
+            let mut trial = more.clone();
+            trial.push(path);
+            if p1.tokens_with(&format!("files: {}\n", trial.join(", ")), Kind::Code) > room {
+                break;
+            }
+            more = trial;
+        }
+        if !more.is_empty() {
+            p1.push(&format!("files: {}\n", more.join(", ")), Kind::Code);
+        }
     }
     let p1_sent = if tier.with_prefix() { p1.tokens() } else { 0 };
 
@@ -411,13 +467,17 @@ pub fn build(
     }
     let mut memory_shown = 0;
     let mut header = false;
-    for h in found.hits.iter().filter(|h| h.kind == "memory") {
+    let mut restated = 0;
+    for (position, h) in found.hits.iter().enumerate().filter(|(_, h)| h.kind == "memory") {
         if memory_shown >= 5 {
             break;
         }
         let Some(id) = h.id.parse::<i64>().ok() else { continue };
         if rule_ids.contains(&id) {
-            continue;
+            if position >= RESTATE_WITHIN || restated >= RESTATE_MAX {
+                continue;
+            }
+            restated += 1;
         }
         let Some(line) = memory_line(conn, id) else { continue };
         if p0_sent + p1_sent + p2.tokens_with(&line, Kind::Prose) + 20 > budget {

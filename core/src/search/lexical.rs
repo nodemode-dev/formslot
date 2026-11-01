@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use rusqlite::{Connection, params};
 
-use super::text::{fts_or, query_terms, trigram_terms};
+use super::text::{fts_or, query_terms, split_words, stem, trigram_terms};
 use super::{Hit, Target};
 use crate::symbols::stable_id;
 
@@ -183,16 +183,44 @@ pub fn neighbours(conn: &Connection, corpora: &[Target], seeds: &[Hit], limit: u
 }
 
 pub fn memory(conn: &Connection, scope: Option<i64>, query: &str, limit: usize) -> crate::Result<Vec<Hit>> {
+    memory_by(conn, scope, query, limit, None)
+}
+
+pub fn covered(conn: &Connection, hits: Vec<Hit>, query: &str, share: f64) -> Vec<Hit> {
+    let terms: HashSet<String> = query_terms(query).iter().map(|t| stem(t)).collect();
+    if terms.is_empty() {
+        return Vec::new();
+    }
+    hits.into_iter()
+        .filter(|h| {
+            let Ok(id) = h.id.parse::<i64>() else { return false };
+            let Ok(text) = conn.query_row("SELECT title || ' ' || text FROM memory_record WHERE id = ?1", params![id], |r| r.get::<_, String>(0))
+            else {
+                return false;
+            };
+            let words: HashSet<String> = split_words(&text).iter().map(|w| stem(w)).collect();
+            let matched = terms.iter().filter(|t| words.contains(*t)).count();
+            matched as f64 / terms.len() as f64 >= share
+        })
+        .collect()
+}
+
+pub fn memory_by(conn: &Connection, scope: Option<i64>, query: &str, limit: usize, derived: Option<bool>) -> crate::Result<Vec<Hit>> {
     let Some(m) = fts_or(&query_terms(query)) else {
         return Ok(Vec::new());
     };
+    let filter = match derived {
+        None => "",
+        Some(true) => " AND r.kind IN ('hashout', 'tombstone')",
+        Some(false) => " AND r.kind NOT IN ('hashout', 'tombstone')",
+    };
     let mut stmt = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT r.id, r.kind, r.title, COALESCE(r.anchor, ''), bm25(memory_fts, 6.0, 2.0, 4.0) AS rank \
              FROM memory_fts JOIN memory_record r ON r.id = memory_fts.rowid \
-             WHERE memory_fts MATCH ?1 AND r.status = 'active' AND (r.corpus_id IS NULL OR ?2 IS NULL OR r.corpus_id = ?2) \
-             ORDER BY rank, r.id LIMIT ?3",
-        )
+             WHERE memory_fts MATCH ?1 AND r.status = 'active' AND (r.corpus_id IS NULL OR ?2 IS NULL OR r.corpus_id = ?2){filter} \
+             ORDER BY rank, r.id LIMIT ?3"
+        ))
         .map_err(sql)?;
     let rows = stmt
         .query_map(params![m, scope, limit as i64], |r| {

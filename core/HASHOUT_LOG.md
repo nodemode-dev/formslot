@@ -1145,3 +1145,43 @@ The corpus filter is applied after the vec0 nearest-neighbour cut (k is the larg
 - logged: v0.10.1 · 2026-10-30
 
 `clean` resolves `..` lexically, so `/repo/link/../x` becomes `/repo/x` although the operating system would resolve it through the symlink. The decline check is advisory and is documented as lexical; resolving symlinks would need file access for paths that may not exist yet, so it is left as it is.
+
+### core/src/lifecycle.rs · leases, activity and idle exit
+
+- refers-to: core/src/lifecycle.rs :: exit_reason, busy, open, renew, prune
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+One mutex holds the last-activity instant, the open leases and the stop flag; a running request is counted separately so a long index run is never idle. The policy follows formMCP's `idle_limit` (core/src/mcp.rs there: `FORMMCP_IDLE_MINUTES`, default 10) with two differences: formMCP sweeps at the next request because it has no timer and the owner of a child app can be asked later, whereas this service is the process that must go away, so the CLI loop asks `exit_reason` every 200 ms; and `0` means never here (the brief for S11), while in formMCP it means at once. A lease is a client's statement that it is present; it carries a name, never an id the listing reveals, and ends with the process. When a lease expires its expiry moment becomes the last activity, so a client that vanished gets a full idle period after the lease lapses rather than being cut off at once. `FORMSLOT_IDLE_SECONDS` exists only so the idle path can be checked in seconds; it wins over the minutes when both are set. `GET /api/health` is the one request that is not activity: the CLI `status`, `start` and monitors poll it, and a poll must not keep a service alive.
+
+### core/src/api.rs · lease routes, shutdown, 404 and 405
+
+- refers-to: core/src/api.rs :: route, dispatch, allowed, missing_corpus
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+`route` wraps `dispatch` so the in-flight guard drops after the reply is built. `POST /api/shutdown` is a route rather than a signal so `formslot stop` is the same on Windows and Unix and needs no `kill` program; the token still guards it. An unknown corpus is checked against the list before work starts (the store's own error text is not parsed); the check opens the store once more, which is cheap against an index run. `allowed` is the single table of methods per path shape; any path found there with another method is 405 with `Allow`, any other path is 404.
+
+### core/src/http.rs · connection cap and read deadline
+
+- refers-to: core/src/http.rs :: Slot, arm, read_request, start
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+The cap is a process-wide counter taken in the accept loop (64) and given back when the connection thread ends, so a flood of idle sockets cannot create unbounded threads; a 65th connection is answered 503 on the accept thread with a short reply and closed. The deadline is one instant fixed when the request starts; before every read the socket timeout is set to what is left, so a client that sends a byte at a time still ends at 15 seconds (the old fixed per-read timeout did not bound that). The body is read in a loop for the same reason. The deadline covers reading only: a running route is not interrupted, because an index run cannot be cancelled safely mid-transaction.
+
+### core/src/binres.rs · find
+
+- refers-to: core/src/binres.rs :: find, command, source
+- kind: explainer
+- logged: v0.10.2 · 2026-10-30
+
+The pattern is substrata `core/binres.py` (MIT, owner's; /home/claude/ref2/backend/app/core/binres.py): one choke point so packaging changes where a program lives without touching feature code. Order here: `FORMSLOT_<NAME>_BIN`, then `<data folder>/bin/`, then PATH. An environment override that is set but not an executable file is not found, and does not fall back, so a typo is visible rather than silently using another program. `command` returns the bare name when nothing is found so the existing "cannot run" error text still appears. Used by hygiene.rs (gitleaks), eval.rs (rg) and dense/fetch.rs (curl). `FORMSLOT_BIN_DIR`, which only gitleaks read, is retired in favour of `<data folder>/bin/`.
+
+### core/src/install.rs · launcher_path, is_ours
+
+- refers-to: core/src/install.rs :: launcher_path, launcher_word, is_ours, program_of
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+Claude Code starts hooks with a minimal PATH on some systems, and a plugin or checkout used without the `formslot` launcher on PATH made every hook fail silently. When `formslot` is on PATH at install time the text stays `formslot` (portable between machines in a committed settings file); otherwise the resolved path of the running binary is written, which is `formslot-cli`, the program the launcher script runs. A committed file with an absolute path is machine specific; doctor reports a repository command that cannot be found. `is_ours` replaces the old prefix test so a second install over an absolute-path entry adds nothing; it reads the first word (quoted or not), takes its file name without `.exe`, and needs `check` or `hook` after it.

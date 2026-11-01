@@ -25,6 +25,8 @@ const SLOT_FUSED: usize = 5;
 const TEST_PENALTY: f64 = 0.5;
 const WEIGHT_SLOT: f64 = 2.0;
 const WEIGHT_MEMORY: f64 = 2.0;
+const MEMORY_FUSED: usize = 4;
+const MEMORY_COVERAGE: f64 = 0.3;
 const WEIGHT_DERIVED: f64 = 0.7;
 
 #[derive(Debug, Clone)]
@@ -180,9 +182,16 @@ pub fn retrieve_with(
     let trigram = lexical::trigram(conn, corpora, scope, query, POOL_TRIGRAM)?;
     let seeds: Vec<Hit> = fuse(vec![lexical.clone(), trigram.clone()]).into_iter().take(GRAPH_SEEDS).collect();
     let graph = lexical::neighbours(conn, corpora, &seeds, POOL_GRAPH)?;
-    let (derived, memory): (Vec<Hit>, Vec<Hit>) = lexical::memory(conn, scope, query, POOL_MEMORY)?
-        .into_iter()
-        .partition(|h| h.unit_kind == "hashout" || h.unit_kind == "tombstone");
+    let memory: Vec<Hit> = lexical::covered(
+        conn,
+        lexical::memory_by(conn, scope, query, POOL_MEMORY, Some(false))?,
+        query,
+        MEMORY_COVERAGE,
+    )
+    .into_iter()
+    .take(MEMORY_FUSED)
+    .collect();
+    let derived = lexical::memory_by(conn, scope, query, POOL_MEMORY, Some(true))?;
     let pool: Vec<Hit> = fuse(vec![lexical.clone(), trigram.clone()]).into_iter().take(SLOT_POOL).collect();
     let slot_matches = slots::rank(conn, query, &pool, corpora)?;
     let slot_hits: Vec<Hit> = slots::hits(&slot_matches).into_iter().take(SLOT_FUSED).collect();

@@ -165,3 +165,19 @@ In a build without the feature the `dense` command and `search --dense` exit 1 s
 - logged: v0.10.0 · 2026-10-30
 
 The key is looked up before the pack is built, so a missing key fails fast with exit 1; the remote count is taken after the pack, printed beside the local figures and added as `remoteTokens` to `--json`. A failed request keeps the local estimate and says so on stderr.
+
+### cli/src/service_cmd.rs · serve, start, stop, status, doctor
+
+- refers-to: cli/src/service_cmd.rs :: serve, start, stop, doctor
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+These moved out of main.rs with the new lifecycle commands. `serve` installs the `ctrlc` handler (feature `termination`, so SIGTERM and SIGHUP as well as SIGINT; Ctrl+C and Ctrl+Break on Windows) only after the lock is held, and the handler only sets the core stop flag; the main thread owns the cleanup, which is the same path as an idle stop or `POST /api/shutdown`, so service.json and the lock are always removed in one place. `start` spawns this same executable with `serve` and null streams, its own process group on Unix and DETACHED_PROCESS, CREATE_NEW_PROCESS_GROUP and CREATE_NO_WINDOW on Windows, and judges success by a live discovery file plus a health answer, not by the child's exit. A child that loses the lock race exits 0; the parent then finds the other service live. `stop` asks over HTTP; it never signals by pid, which keeps it portable. `doctor` opens the store read-only on purpose: doctor must not create or migrate anything. It reports `user_version` only, because the expected number is private to store.rs; the REPORT proposes a public constant there. Exit 1 only for a real problem (git missing, folder not writable, a live pid that does not answer, an unreadable discovery file or store, a repository hook that cannot be found).
+
+### cli/src/eval_cmd.rs · run
+
+- refers-to: cli/src/eval_cmd.rs :: run
+- kind: explainer
+- logged: v0.10.2 · 2026-10-30
+
+New `--half all|even|odd` (also `tuning`, `heldout`) filters the gold set by line parity before the run, so the tuning and held-out halves can be reported from the same command. Default is all.

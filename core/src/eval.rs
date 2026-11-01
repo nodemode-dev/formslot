@@ -48,6 +48,17 @@ pub struct Gold {
     pub source: String,
     #[serde(default)]
     pub notes: Option<String>,
+    #[serde(skip)]
+    pub line: usize,
+}
+
+pub fn select_half(gold: Vec<Gold>, half: &str) -> crate::Result<Vec<Gold>> {
+    match half {
+        "all" => Ok(gold),
+        "even" | "tuning" => Ok(gold.into_iter().filter(|g| g.line % 2 == 0).collect()),
+        "odd" | "heldout" => Ok(gold.into_iter().filter(|g| g.line % 2 == 1).collect()),
+        other => Err(format!("--half is all, even (tuning) or odd (held out), not {other}")),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -302,7 +313,8 @@ pub fn load_gold(path: &Path) -> crate::Result<Vec<Gold>> {
             continue;
         }
         let at = i + 1;
-        let item: Gold = serde_json::from_str(line).map_err(|e| format!("eval: gold line {at}: {e}"))?;
+        let mut item: Gold = serde_json::from_str(line).map_err(|e| format!("eval: gold line {at}: {e}"))?;
+        item.line = at;
         if !KINDS.contains(&item.kind.as_str()) {
             return Err(format!("eval: gold line {at}: kind {} is not one of {}", item.kind, KINDS.join(", ")));
         }
@@ -411,16 +423,29 @@ fn in_pack(pack: &Pack, entries: &[Entry], conn: &Connection, corpus_id: i64, wi
     })
 }
 
+type ExtraLists<'a> = &'a mut dyn FnMut(&Connection, &Target, &str) -> crate::Result<Vec<(f64, Vec<search::Hit>)>>;
+
 fn run_formslot(store: &mut Store, gold: &[Gold], targets: &[Target], ks: &[usize]) -> crate::Result<ArmReport> {
+    let mut none = |_: &Connection, _: &Target, _: &str| Ok(Vec::new());
+    run_fused(Arm::Formslot, store, gold, targets, ks, &mut none)
+}
+
+fn run_fused(
+    arm: Arm,
+    store: &mut Store,
+    gold: &[Gold],
+    targets: &[Target],
+    ks: &[usize],
+    extra: ExtraLists,
+) -> crate::Result<ArmReport> {
     let mut memo = Memo { cache: HashMap::new() };
     let mut outcomes = Vec::new();
     for item in gold {
         let target = target_of(targets, &item.corpus)?;
         let entries = entries_of(&item.expect);
         let started = Instant::now();
-        let found = search::retrieve(store.conn(), std::slice::from_ref(target), Some(target.id), &item.task)?;
-        let built = pack::run(store, &item.task, Some(&target.name), Some(PACK_BUDGET), None)?;
-        let millis = started.elapsed().as_secs_f64() * 1000.0;
+        let lists = extra(store.conn(), target, &item.task)?;
+        let found = search::retrieve_with(store.conn(), std::slice::from_ref(target), Some(target.id), &item.task, lists)?;
         let cands: Vec<Cand> = found
             .hits
             .iter()
@@ -432,6 +457,8 @@ fn run_formslot(store: &mut Store, gold: &[Gold], targets: &[Target], ks: &[usiz
             })
             .collect();
         let conn = store.conn();
+        let built = pack::build_with(conn, target, &item.task, pack::Tier::for_budget(PACK_BUDGET), PACK_BUDGET, found)?;
+        let millis = started.elapsed().as_secs_f64() * 1000.0;
         let (first, gains) = walk(&cands, &entries, conn, &mut memo);
         outcomes.push(Outcome {
             id: item.id.clone(),
@@ -445,16 +472,92 @@ fn run_formslot(store: &mut Store, gold: &[Gold], targets: &[Target], ks: &[usiz
             millis,
         });
     }
-    Ok(finish(
-        Arm::Formslot,
-        format!("the fused search ranking and the T4 pack at {PACK_BUDGET} tokens; tokens are the pack's sent count; latency is search plus pack"),
-        outcomes,
-        ks,
-    ))
+    let method = match arm {
+        Arm::Dense => format!("the fused search ranking with the dense list (search::retrieve_with) and the T4 pack at {PACK_BUDGET} tokens; latency includes embedding the task"),
+        _ => format!("the fused search ranking and the T4 pack at {PACK_BUDGET} tokens; tokens are the pack's sent count; latency is search plus pack"),
+    };
+    Ok(finish(arm, method, outcomes, ks))
+}
+
+#[cfg(feature = "dense")]
+fn run_dense(store: &mut Store, gold: &[Gold], targets: &[Target], ks: &[usize]) -> ArmReport {
+    use crate::dense;
+    if !dense::fetch::present() {
+        return not_run(Arm::Dense, dense::fetch_hint());
+    }
+    let mut embedder = match dense::embed::Embedder::load() {
+        Ok(e) => e,
+        Err(e) => return not_run(Arm::Dense, e),
+    };
+    let ready = (|| -> crate::Result<i64> {
+        dense::vec_version(store.conn())?;
+        dense::ensure_table(store.conn())?;
+        store
+            .conn()
+            .query_row("SELECT COUNT(*) FROM dense_done", [], |r| r.get(0))
+            .map_err(|e| format!("dense: {e}"))
+    })();
+    match ready {
+        Ok(0) => return not_run(Arm::Dense, "no unit vectors yet; `formslot dense build` has not run for this store".to_string()),
+        Err(e) => return not_run(Arm::Dense, e),
+        Ok(_) => {}
+    }
+    let mut extra = |conn: &Connection, target: &Target, task: &str| -> crate::Result<Vec<(f64, Vec<search::Hit>)>> {
+        let vector = embedder
+            .embed(&[task.to_string()])?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "dense: the query gave no vector".to_string())?;
+        let mut bytes = Vec::with_capacity(vector.len() * 4);
+        for x in &vector {
+            bytes.extend_from_slice(&x.to_le_bytes());
+        }
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT s.id, s.corpus_id, s.path, s.qualified, s.kind, s.signature, s.start_line, s.end_line, v.distance \
+                 FROM (SELECT rowid, distance FROM {} WHERE embedding MATCH ?1 AND k = 400) v \
+                 JOIN dense_done d ON d.unit_id = v.rowid JOIN search_unit s ON s.id = v.rowid \
+                 WHERE s.corpus_id = ?2 ORDER BY v.distance, s.path, s.qualified",
+                dense::TABLE
+            ))
+            .map_err(|e| format!("dense: {e}"))?;
+        let rows = stmt
+            .query_map(params![bytes, target.id], |r| {
+                Ok((
+                    search::lexical::Row {
+                        id: r.get(0)?,
+                        corpus_id: r.get(1)?,
+                        path: r.get(2)?,
+                        qualified: r.get(3)?,
+                        kind: r.get(4)?,
+                        signature: r.get(5)?,
+                        start_line: r.get(6)?,
+                        end_line: r.get(7)?,
+                    },
+                    r.get::<_, f64>(8)?,
+                ))
+            })
+            .map_err(|e| format!("dense: {e}"))?;
+        let mut out: Vec<search::Hit> = Vec::new();
+        for row in rows {
+            let (row, distance) = row.map_err(|e| format!("dense: {e}"))?;
+            let mut hit = search::lexical::unit_hit(&row, &target.name, String::new(), 1.0 - distance);
+            hit.why = vec![format!("dense #{} (cosine {:.3})", out.len() + 1, 1.0 - distance)];
+            out.push(hit);
+            if out.len() >= 100 {
+                break;
+            }
+        }
+        Ok(vec![(1.0, out)])
+    };
+    match run_fused(Arm::Dense, store, gold, targets, ks, &mut extra) {
+        Ok(report) => report,
+        Err(e) => not_run(Arm::Dense, e),
+    }
 }
 
 fn ripgrep_version() -> Option<String> {
-    let out = Command::new("rg").arg("--version").output().ok()?;
+    let out = Command::new(crate::binres::command("rg")).arg("--version").output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -490,7 +593,7 @@ fn rank_files(mut counts: Vec<(String, usize)>) -> Vec<(String, usize)> {
 }
 
 fn rg_counts(root: &str, terms: &[String]) -> Option<Vec<(String, usize)>> {
-    let mut cmd = Command::new("rg");
+    let mut cmd = Command::new(crate::binres::command("rg"));
     cmd.current_dir(root).args(["--no-messages", "--count", "--ignore-case", "--fixed-strings"]);
     for term in terms {
         cmd.arg("-e").arg(term);
@@ -643,6 +746,19 @@ fn run_baseline(store: &Store, gold: &[Gold], targets: &[Target], ks: &[usize]) 
     ))
 }
 
+#[cfg(feature = "dense")]
+fn dense_arm(store: &mut Store, gold: &[Gold], targets: &[Target], ks: &[usize]) -> ArmReport {
+    run_dense(store, gold, targets, ks)
+}
+
+#[cfg(not(feature = "dense"))]
+fn dense_arm(_: &mut Store, _: &[Gold], _: &[Target], _: &[usize]) -> ArmReport {
+    not_run(
+        Arm::Dense,
+        "this build has no `dense` cargo feature, so there is no embedding index or model to rank with".to_string(),
+    )
+}
+
 pub fn run(store: &mut Store, gold: Vec<Gold>, gold_path: &str, corpus: Option<&str>, arms: &[Arm], ks: &[usize]) -> crate::Result<Report> {
     let gold: Vec<Gold> = match corpus {
         Some(c) => gold.into_iter().filter(|g| g.corpus == c).collect(),
@@ -673,14 +789,7 @@ pub fn run(store: &mut Store, gold: Vec<Gold>, gold_path: &str, corpus: Option<&
         reports.push(match arm {
             Arm::Formslot => run_formslot(store, &gold, &targets, ks)?,
             Arm::Baseline => run_baseline(store, &gold, &targets, ks)?,
-            Arm::Dense => not_run(
-                Arm::Dense,
-                if DENSE_FEATURE {
-                    "the build has the `dense` feature, but the evaluation harness has no hook into the dense tier yet".to_string()
-                } else {
-                    "this build has no `dense` cargo feature, so there is no embedding index or model to rank with".to_string()
-                },
-            ),
+            Arm::Dense => dense_arm(store, &gold, &targets, ks),
         });
     }
     Ok(Report {

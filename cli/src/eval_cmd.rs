@@ -53,6 +53,10 @@ pub fn run(args: &[String]) -> ExitCode {
         Ok(g) => g,
         Err(e) => return fail(e),
     };
+    let gold = match eval::select_half(gold, &option(args, "--half").unwrap_or_else(|| "all".to_string())) {
+        Ok(g) => g,
+        Err(e) => return fail(e),
+    };
     let mut store = match Store::open(&config::corpus_db()) {
         Ok(s) => s,
         Err(e) => return fail(e),
