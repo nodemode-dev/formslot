@@ -1209,3 +1209,19 @@ From the fresh-context review. Two defects. First, a formslot hook or `.mcp.json
 - logged: v0.10.2 · 2026-10-30
 
 A program in `<data>/bin` is run by hooks and indexing, so a folder or file that another user can write is a way to run their code. On POSIX both the folder and the program must be owned by the current user (taken from the owner of `/proc/self`, else of the data folder, as the core has no libc dependency) and carry no group or world write bit, else the resolver skips them and falls through to PATH; `doctor` names the ignored file and checks the `bin/` mode. A path given in `FORMSLOT_<NAME>_BIN` is the owner's explicit choice and is not checked.
+
+### core/src/eval_model.rs · run
+
+- refers-to: core/src/eval_model.rs :: run
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+The model arm is the only eval arm that calls a model, so it lives apart from eval.rs and is never in `--arm all`; the A10 gate "pass rate within 1 point" needs a model's answers. It shells out to the external `claude` program (found through binres, `FORMSLOT_CLAUDE_BIN`) with `-p`, which uses the user's Claude Code login; formslot holds no key. The corpus is exported with `git archive` at the indexed commit into `<data>/model-eval/` so the model reads a clean tree, not the user's working copy. The model gets Read, Grep and Glob only (`--tools` plus `--disallowedTools` for every writer, default permission mode, `--safe-mode` so no CLAUDE.md, hook, plugin or MCP server differs between the two arms), and each call has a 120 second limit enforced by killing its process group; a timeout is a fail. `--safe-mode` also means the baseline does not see the corpus's own CLAUDE.md, which is where several owner rules live; the pack carries them, so the with-formslot arm has an advantage on convention and decline tasks that a repository-with-CLAUDE.md agent would partly have anyway. Tool calls are counted from tool_use blocks in the stream-json output, so parallel calls in one turn each count. Grading repeats the retrieval matching on the answer (file path, exact `path#qualified`, slot id, case-insensitive phrase inside a rule string); a phrase is matched literally, so a paraphrased rule is a miss, in both arms alike. Sampling is stratified by kind with largest remainders and a SHA-256 order within kind, so a given seed picks the same tasks. The spend cap stops new runs once the total passes it; runs already started finish.
+
+### core/src/dense/vectors.rs · nearest
+
+- refers-to: core/src/dense/vectors.rs :: nearest
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+`nearest` and `POOL_DENSE` are public so `search --dense` and the eval dense arm share one statement; the eval arm used a copy with a fixed 400 neighbours. The review note was right that vec0 cuts to k neighbours before the corpus filter, so a scoped search could return fewer than the pool even when the corpus had enough vectors. It now starts at max(4 x limit, limit + 50), and while the filtered list is short it multiplies k by 4, stopping when k reaches the number of vectors in the store or 4096 (the vec0 k limit). First end to end run on formvis: 17,608 units in 4,235 s (4.16 units per second, 2 cores), so the 2.5 hour estimate was about 2x too high.

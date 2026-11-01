@@ -9,8 +9,9 @@ use crate::store::Store;
 
 const CHUNK: usize = 128;
 const BATCH: usize = 8;
-const POOL_DENSE: usize = 100;
+pub const POOL_DENSE: usize = 100;
 const OVERFETCH: usize = 4;
+const KNN_CAP: i64 = 4096;
 
 pub struct BuildStats {
     pub corpus: String,
@@ -227,14 +228,35 @@ pub fn status(conn: &Connection) -> crate::Result<Vec<CorpusStatus>> {
     rows.collect::<Result<Vec<_>, _>>().map_err(sql)
 }
 
-fn nearest(
+pub fn nearest(
     conn: &Connection,
     corpora: &[Target],
     scope: Option<i64>,
     vector: &[f32],
     limit: usize,
 ) -> crate::Result<Vec<Hit>> {
-    let k = ((limit * OVERFETCH).max(limit + 50)).min(4000) as i64;
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM dense_done", [], |r| r.get(0))
+        .map_err(sql)?;
+    let reach = total.min(KNN_CAP).max(1);
+    let mut k = ((limit * OVERFETCH).max(limit + 50) as i64).min(reach);
+    loop {
+        let out = nearest_k(conn, corpora, scope, vector, limit, k)?;
+        if out.len() >= limit || k >= reach {
+            return Ok(out);
+        }
+        k = (k * 4).min(reach);
+    }
+}
+
+fn nearest_k(
+    conn: &Connection,
+    corpora: &[Target],
+    scope: Option<i64>,
+    vector: &[f32],
+    limit: usize,
+    k: i64,
+) -> crate::Result<Vec<Hit>> {
     let mut stmt = conn
         .prepare(&format!(
             "SELECT s.id, s.corpus_id, s.path, s.qualified, s.kind, s.signature, s.start_line, s.end_line, v.distance \

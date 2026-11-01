@@ -566,46 +566,13 @@ fn run_dense(store: &mut Store, gold: &[Gold], targets: &[Target], ks: &[usize])
             .into_iter()
             .next()
             .ok_or_else(|| "dense: the query gave no vector".to_string())?;
-        let mut bytes = Vec::with_capacity(vector.len() * 4);
-        for x in &vector {
-            bytes.extend_from_slice(&x.to_le_bytes());
-        }
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT s.id, s.corpus_id, s.path, s.qualified, s.kind, s.signature, s.start_line, s.end_line, v.distance \
-                 FROM (SELECT rowid, distance FROM {} WHERE embedding MATCH ?1 AND k = 400) v \
-                 JOIN dense_done d ON d.unit_id = v.rowid JOIN search_unit s ON s.id = v.rowid \
-                 WHERE s.corpus_id = ?2 ORDER BY v.distance, s.path, s.qualified",
-                dense::TABLE
-            ))
-            .map_err(|e| format!("dense: {e}"))?;
-        let rows = stmt
-            .query_map(params![bytes, target.id], |r| {
-                Ok((
-                    search::lexical::Row {
-                        id: r.get(0)?,
-                        corpus_id: r.get(1)?,
-                        path: r.get(2)?,
-                        qualified: r.get(3)?,
-                        kind: r.get(4)?,
-                        signature: r.get(5)?,
-                        start_line: r.get(6)?,
-                        end_line: r.get(7)?,
-                    },
-                    r.get::<_, f64>(8)?,
-                ))
-            })
-            .map_err(|e| format!("dense: {e}"))?;
-        let mut out: Vec<search::Hit> = Vec::new();
-        for row in rows {
-            let (row, distance) = row.map_err(|e| format!("dense: {e}"))?;
-            let mut hit = search::lexical::unit_hit(&row, &target.name, String::new(), 1.0 - distance);
-            hit.why = vec![format!("dense #{} (cosine {:.3})", out.len() + 1, 1.0 - distance)];
-            out.push(hit);
-            if out.len() >= 100 {
-                break;
-            }
-        }
+        let out = dense::vectors::nearest(
+            conn,
+            std::slice::from_ref(target),
+            Some(target.id),
+            &vector,
+            dense::vectors::POOL_DENSE,
+        )?;
         Ok(vec![(1.0, out)])
     };
     match run_fused(Arm::Dense, store, gold, targets, ks, &mut extra) {
