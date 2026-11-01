@@ -1,0 +1,119 @@
+# formslot user guide
+
+## What formslot does for you
+
+formslot keeps a small, private memory of your projects on your own computer: the code that already exists, where it lives and the rules you have set for it. When you work in Claude Code it quietly tells Claude about what already exists, so Claude reuses it instead of writing it again. It also stops Claude from rebuilding things you have said you do not want. Nothing leaves your computer.
+
+## Install
+
+You need [git](https://git-scm.com) and [Claude Code](https://claude.com/product/claude-code). To build formslot from source you also need [Rust](https://rustup.rs). formslot never installs programs for you; it tells you the exact command for anything missing.
+
+Pick one way:
+
+- **macOS:** double-click `Install formslot.command` in the formslot folder. The first time, macOS may refuse because the file did not come from the App Store. Right-click the file, choose Open, then choose Open again in the question that appears. You only do this once.
+- **Windows:** double-click `Install formslot.bat`. Windows SmartScreen may show a blue "Windows protected your PC" box. Click "More info", then "Run anyway". This appears because the file is new to Windows, not because anything is wrong.
+- **One command, any system:** open a terminal in the formslot folder and run `./formslot_oc_install` (on Windows `formslot_oc_install.bat`). When it finishes it offers to start the guided setup. If formslot is already built, `./formslot setup` does the same.
+
+The guided setup walks you through six short steps and explains each one. Press Enter to accept the answer shown in [brackets]. Press Ctrl+C at any time to leave; nothing is left half-done. Running it again is safe.
+
+## Your first project
+
+During setup, when it asks which folders hold your projects, drag a project folder into the window and press Enter. The folder must be a git repository with at least one commit. formslot reads it and connects Claude Code to it.
+
+Then do the one step only you can do: open a terminal in that project, run `claude`, and approve the formslot server when Claude Code asks. Until you approve it, Claude Code will not use formslot there.
+
+To add another project later, run `formslot add /path/to/project`. To connect it to Claude Code, run `formslot install /path/to/project`.
+
+## What you will see in Claude Code
+
+formslot speaks up only when it matters. Three things you may notice:
+
+**The reuse warning.** Before Claude writes code, formslot checks whether something like it already exists. If so, Claude is told, and you may see a note like this:
+
+```
+formslot: ui.control-rows already covers a function named buildControlRows
+(src/ui/control-rows.ts, line 42). Consider reusing it.
+```
+
+The write is not blocked. Claude usually switches to the existing code. The same note is not repeated for an identical write, but appears again if the content changes.
+
+**A decline.** If you have recorded that a feature should not be built, formslot stops a write that would bring it back and says why:
+
+```
+formslot: this project declines "undo history for the canvas"
+(owner rule, CLAUDE.md line 31). Ask the owner before building it.
+```
+
+This one does block the write, and quotes the rule so you can see where it came from.
+
+**The slot card (in subform).** If you use subform, its right panel has a Slots tab. When you open a file it shows which reusable slots or known code units cover that file, for example "ui.control-rows" with its status. A file nothing covers shows "No slot or unit covers this file".
+
+## Everyday commands
+
+```bash
+formslot status            # is the service running, how healthy, how long idle
+formslot doctor            # check git, the data folder, the service, the store and the hooks
+formslot add <path>        # index a project (use --name to choose its name)
+formslot reindex <name>    # read a project again after it changed
+formslot search "colour row" --corpus <name>   # find code, slots and rules
+formslot pack "add a section to the dialog" --corpus <name> --tokens 4000   # a short briefing for a task
+formslot slot list         # the reusable components formslot knows
+```
+
+`formslot corpus list` shows your projects with their folder. `formslot help` lists everything. The service starts on demand and stops by itself after ten idle minutes; `formslot start` and `formslot stop` do it by hand.
+
+## Keeping it up to date
+
+After you get a new version of formslot, rebuild or run the installer again so the program in your home folder is replaced (setup stops and restarts a running service for you). Then read each project again and refresh its rules:
+
+```bash
+formslot reindex <name>
+formslot memory ingest <name>
+formslot search rebuild
+```
+
+You can also run `formslot reindex <name>` any time your project has new commits; only files not seen before are read.
+
+## Renaming or moving a project folder
+
+If you only want a different name inside formslot:
+
+```bash
+formslot corpus rename old-name new-name
+```
+
+Everything is kept: the index, rules and slot copies. A name is 1 to 64 letters, digits, `.`, `_` or `-`.
+
+If you moved the folder on disk, point formslot at the new place, then read it again:
+
+```bash
+formslot corpus move <name> /new/path/to/project
+formslot reindex <name>
+```
+
+The new folder must be a checkout of the same repository and contain the last indexed commit.
+
+## Undoing everything
+
+```bash
+formslot setup --status    # see what setup put on this computer, changes nothing
+formslot setup --remove    # guided undo, each step asked and skippable
+```
+
+`--remove` disconnects your projects from Claude Code (only formslot's own entries; other settings are untouched and backups are saved as `<file>.formslot-backup`), stops the service, removes the PATH lines setup added, removes the program, and last asks whether to delete formslot's data folder. That last question defaults to No. For scripts, `formslot setup --remove --yes` never deletes your data; add `--purge` to delete it too. Add `--dry-run` to only see what would happen.
+
+## Troubleshooting
+
+**Claude Code does not use formslot ("MCP not approved").** In that project, run `claude` and approve the formslot server when asked. `formslot setup --status` shows whether the project is connected; `formslot install <path> --enable` connects it again and pre-approves the server.
+
+**"formslot: command not found" (not found on PATH).** Open a new terminal window first; the PATH line setup added only applies to new windows. If it still fails, run `formslot setup --status` to see which shell file has the line, and `formslot doctor` to see what Claude Code's hooks can find.
+
+**Windows PATH.** Setup adds `%LOCALAPPDATA%\Programs\formslot` to your user PATH. Close and reopen the terminal, or sign out and in, for it to count. `formslot setup --remove` takes only that entry out again and saves the old value in a file in your home folder.
+
+**The service is not running.** Run `formslot status`, then `formslot start`. `formslot doctor` explains any problem it finds and exits with 1 when something real is wrong.
+
+**The port is in use.** formslot uses port 5645. If another program has it, choose another before starting: `FORMSLOT_PORT=5700 formslot start` (in PowerShell: `$env:FORMSLOT_PORT = 5700; formslot start`). `FORMSLOT_PORT=0` lets the system pick a free port. Use the same value for later commands.
+
+## Where your data lives
+
+Everything is in `~/.formslot` (on Windows, `.formslot` in your user folder). It holds the index database, the service file, the log, and small state files for the hooks. Set `FORMSLOT_DATA_DIR` to use another folder. formslot never changes your project's source; inside a project it writes only `.claude/settings.json` (merged, other keys kept), `.mcp.json`, and `slots.lock.json` when you apply slots.
