@@ -44,8 +44,11 @@ core/
       004_facts_family.sql  blob.facts_family, the grammar family facts were read with
       005_related.sql       related_pair, the related band
       006_slots.sql         slot, slot_file, slot_event (log: src/slots/HASHOUT_LOG.md)
+      007_slot_status.sql   slot status triggers (same log)
+      008_memory.sql        memory_record, memory_event (log: src/memory/HASHOUT_LOG.md)
     related.rs      the related band: similar and same_name pairs across corpora
     slots/          slot manifests, store, refresh, copies, lockfile, consumer drift (own log: src/slots/HASHOUT_LOG.md)
+    memory/         memory records: ingest, declines, anchors, proposals, recall (own log: src/memory/HASHOUT_LOG.md)
 ```
 
 ## Table of contents

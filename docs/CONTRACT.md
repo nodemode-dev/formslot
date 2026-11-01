@@ -101,6 +101,10 @@ The `formslot` launcher at the repository root builds `formslot-cli` on first us
 | `formslot slot plan --repo <path> <id>... [--force] [--json]` | v0.5.0 |
 | `formslot slot apply --repo <path> <id>... [--dry-run] [--force] [--json]` | v0.5.0 |
 | `formslot slot drift --repo <path> [--infer] [--check] [--json]` | v0.5.0 |
+| `formslot memory ingest <corpus> [--json]` | v0.7.0 |
+| `formslot memory list [--kind K] [--status S] [--corpus C] [--limit N] [--count] [--json]` | v0.7.0 |
+| `formslot recall <query> [--anchor path#symbol] [--kind K] [--corpus C] [--limit N] [--json]` | v0.7.0 |
+| `formslot remember --propose <text> [--anchor path#symbol] [--kind decision\|how-to] [--corpus C] [--json]` | v0.7.0 |
 
 Unit kinds (v0.4.0): `function`, `method`, `class`, `interface`, `type`, `enum`, `namespace`, `const` (an exported TypeScript constant), `constant` (an UPPER_CASE module-level Python name or a Rust const), `struct`, `trait`, `static`, `mod`, `tauri_command`, `custom_property`, `selector`, `element_id`, `script`, `style`. Edge kinds: `import`, `call`, `type`, `invoke`, `css_var`. Clone tiers: `T1` same text, `T2` same normalised tokens, `T3` near duplicate (estimated Jaccard at least 0.70), `related` (v0.5.0, stored apart from the clone tiers in `related_pair`: reason `similar`, estimated Jaccard from 0.40 to below 0.70 within one unit kind family, or reason `same_name`, the same normalised name in different files). Drift states: `identical`, `renamed`, `drifted`, `diverged`. A unit's stable id is `formslot <repo> <path>#<qualified>~<sig8>`.
 
@@ -113,6 +117,18 @@ A slot manifest follows `docs/slot.schema.json` (JSON Schema 2020-12). The id is
 - `slots.lock.json` in a consumer repository, written only by `slot apply`: `{schemaVersion: 1, slots: [{id, version, originCommit, installedAt, contentHash, files: [{path, originPath, originSha256, installedSha256, port}], pinned}]}`. An `originSha256` of `""` means the installed file differed from the origin when recorded and its base release is unknown; an `installedSha256` of `""` means the file was not in the repository.
 - Drift per file: local change is installed-now against `installedSha256`; origin change is the slot's current `sha256` against `originSha256`. States `clean`, `local`, `behind` (origin only), `diverged` (both), `missing`. `drift --infer` with no lockfile matches files by name and reports `identical` or `drifted`.
 - formslot only reads a consumer repository and writes its one `slots.lock.json`; it never copies or edits a consumer's source.
+
+## Memory (v0.7.0)
+
+A memory record has `kind`, `authority`, `status`, `title`, `text`, an optional `anchor` (`path#symbol`, or a path), `corpus_id`, `source` (`path:line`, or `proposal`), comma-separated lowercase `triggers`, `content_hash`, `valid_from`, `valid_to` and `superseded_by`.
+
+- Kinds: `rule`, `decision`, `how-to`, `declined`, `hashout`, `tombstone` (a HASHOUT entry about removed code).
+- Authority: `owner` (CLAUDE.md and AGENTS.md rules, NOTICE conventions, declines), `derived` (HASHOUT entries, BUILD_NOTES decisions, dev-wise how-tos), `agent` (proposals).
+- Status: `active`, `stale` (the source line or the anchored symbol is gone; review it), `superseded` (a newer record replaced it; `valid_to` and `superseded_by` are set), `proposed` (an agent proposal, not yet reviewed).
+- Nothing is deleted: the store refuses `DELETE` on records and events, `UPDATE` of the event log, `UPDATE` of text, title, kind or authority on an owner record, and promoting a record to owner after it is stored. An owner record changes only by a new record that supersedes it.
+- Ingest is idempotent by content hash and source and runs after an index run that changed something; a changed record gets a new record and the old one is superseded; a vanished source line marks its record stale; anchors are checked against the `unit` table.
+- `recall` ranks by term score over title, text and triggers (a declined record whose trigger phrase is in the query ranks first) and ends with a token estimate (characters / 4, rounded up). With `--anchor` the answer is held to 2,000 tokens, longest texts truncated first and marked.
+- `remember --propose` stores a `proposed` agent record and prints NOOP, MERGE, SUPERSEDE or ADD against what exists; it never deletes and never edits an owner record.
 
 ## Later, fixed now so clients can plan
 
@@ -129,3 +145,4 @@ These land in later phases; names and shapes are fixed here and change only with
 - 1 · 2026-10-30 · v0.4.0, additive: the symbol, refs, dupes and drift commands, with their unit kinds, edge kinds, tiers, drift states and the stable id form
 - 1 · 2026-10-30 · v0.4.1, conformance: Rust constants are reported as `constant`, as this file always said (v0.4.0 reported them as `const`); `--limit 0` means no limit for clone groups too
 - 1 · 2026-10-30 · v0.5.0, additive: the related band (`related_pair`, reasons `similar` and `same_name`) and `dupes --related`; the slot manifest schema, the `slot` commands, `GET /api/slots` and `GET /api/slots/<id>`, the `slots.lock.json` format and the per-file drift states; no existing route, command or field changes
+- 1 · 2026-10-30 · v0.7.0, additive: memory records (`memory_record`, `memory_event`) and the `memory`, `recall` and `remember` commands with their kinds, authorities and statuses; no existing route, command or field changes
