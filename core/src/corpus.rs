@@ -180,24 +180,182 @@ fn name_taken(conn: &Connection, name: &str) -> crate::Result<bool> {
 }
 
 pub fn add(store: &mut Store, path: &Path, rev: &str) -> crate::Result<(Corpus, IndexRun)> {
+    add_named(store, path, rev, None)
+}
+
+pub fn add_named(
+    store: &mut Store,
+    path: &Path,
+    rev: &str,
+    explicit: Option<&str>,
+) -> crate::Result<(Corpus, IndexRun)> {
     let repo = Repo::open(path)?;
     let top = repo.toplevel().to_string_lossy().to_string();
     let existing = find_by_path(store.conn(), &top)?;
+    if let Some(wanted) = explicit {
+        check_name(wanted)?;
+    }
     let name = match &existing {
-        Some(c) => c.name.clone(),
+        Some(c) => {
+            if let Some(wanted) = explicit {
+                if wanted != c.name {
+                    return Err(format!(
+                        "{top} is already the corpus {}; to name it {wanted} run: formslot corpus rename {} {wanted}",
+                        c.name, c.name
+                    ));
+                }
+            }
+            c.name.clone()
+        }
         None => {
-            let base = repo
-                .toplevel()
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "repo".to_string());
-            if name_taken(store.conn(), &base)? {
-                return Err(format!("a corpus named {base} already exists for another path").into());
+            let base = match explicit {
+                Some(wanted) => wanted.to_string(),
+                None => repo
+                    .toplevel()
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "repo".to_string()),
+            };
+            if let Some(holder) = find_by_name(store.conn(), &base)? {
+                return Err(format!(
+                    "a corpus named {base} already exists for another path ({}). To index {top} under a different name run: formslot add {top} --name <name>. If {base} is the same repository renamed, run: formslot corpus rename {base} <new-name>. If {top} is where {base} moved to, run: formslot corpus move {base} {top}",
+                    holder.path
+                ));
             }
             base
         }
     };
     index(store, &repo, &name, existing, rev)
+}
+
+fn check_name(name: &str) -> crate::Result<()> {
+    let ok = !name.is_empty()
+        && name.len() <= 64
+        && !name.chars().all(|c| c.is_ascii_digit())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        && !name.starts_with('-')
+        && !name.starts_with('.');
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "{name:?} is not a usable corpus name: use 1 to 64 letters, digits, '.', '_' or '-', not starting with '-' or '.', and not only digits"
+        ))
+    }
+}
+
+fn find_by_name(conn: &Connection, name: &str) -> crate::Result<Option<Corpus>> {
+    let query = format!("SELECT {CORPUS_COLUMNS} FROM corpus WHERE name = ?1");
+    Ok(conn
+        .query_row(&query, params![name], corpus_from_row)
+        .optional()
+        .map_err(sql)?)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Renamed {
+    pub corpus: Corpus,
+    pub from: String,
+    pub slots: usize,
+}
+
+pub fn rename(store: &mut Store, old: &str, new: &str) -> crate::Result<Renamed> {
+    check_name(new)?;
+    let found = find(store.conn(), old)?;
+    if found.name == new {
+        return Err(format!("the corpus is already named {new}"));
+    }
+    if name_taken(store.conn(), new)? {
+        return Err(format!("a corpus named {new} already exists; choose another name"));
+    }
+    let tx = store.conn_mut().transaction().map_err(sql)?;
+    tx.execute("UPDATE corpus SET name = ?1 WHERE id = ?2", params![new, found.id])
+        .map_err(sql)?;
+    let rows: Vec<(String, String)> = {
+        let mut stmt = tx.prepare("SELECT id, manifest FROM slot").map_err(sql)?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?
+            .collect::<Result<_, _>>()
+            .map_err(sql)?
+    };
+    let now = now_iso();
+    let mut changed = 0usize;
+    for (id, text) in rows {
+        let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&text) else { continue };
+        let mut hit = false;
+        if let Some(origin) = value.get_mut("origin").and_then(|o| o.as_object_mut()) {
+            if origin.get("repo").and_then(|v| v.as_str()) == Some(found.name.as_str()) {
+                origin.insert("repo".into(), serde_json::Value::String(new.to_string()));
+                hit = true;
+            }
+        }
+        if let Some(copies) = value.get_mut("copies").and_then(|c| c.as_array_mut()) {
+            for copy in copies {
+                if let Some(map) = copy.as_object_mut() {
+                    if map.get("repo").and_then(|v| v.as_str()) == Some(found.name.as_str()) {
+                        map.insert("repo".into(), serde_json::Value::String(new.to_string()));
+                        hit = true;
+                    }
+                }
+            }
+        }
+        if !hit {
+            continue;
+        }
+        let rewritten = serde_json::to_string(&value).map_err(|e| format!("corpus: {e}"))?;
+        tx.execute(
+            "UPDATE slot SET manifest = ?1 WHERE id = ?2",
+            params![rewritten, id],
+        )
+        .map_err(sql)?;
+        tx.execute(
+            "INSERT INTO slot_event (slot_id, at, action, actor, note) VALUES (?1, ?2, 'corpus-rename', 'owner', ?3)",
+            params![id, now, format!("corpus {} renamed to {new}", found.name)],
+        )
+        .map_err(sql)?;
+        changed += 1;
+    }
+    tx.commit().map_err(sql)?;
+    let corpus = find(store.conn(), new)?;
+    Ok(Renamed { corpus, from: found.name, slots: changed })
+}
+
+pub fn relocate(store: &mut Store, name: &str, path: &Path) -> crate::Result<Corpus> {
+    let found = find(store.conn(), name)?;
+    let repo = Repo::open(path)?;
+    let top = repo.toplevel().to_string_lossy().to_string();
+    if let Some(other) = find_by_path(store.conn(), &top)? {
+        if other.id != found.id {
+            return Err(format!("{top} is already the corpus {}", other.name));
+        }
+    }
+    let format = repo.object_format()?;
+    if format != found.object_format {
+        return Err(format!(
+            "{top} uses {format} objects and {} was indexed with {}: not the same repository",
+            found.name, found.object_format
+        ));
+    }
+    let head = found
+        .head
+        .clone()
+        .ok_or_else(|| format!("{} has never been indexed, so there is no commit to compare", found.name))?;
+    repo.rev_parse(&head).map_err(|_| {
+        format!(
+            "{top} does not contain commit {} that {} was indexed at: it is not the same repository (fetch it first if it is a fresh clone)",
+            head.get(..12).unwrap_or(&head),
+            found.name
+        )
+    })?;
+    let remote = repo.remote_url();
+    store
+        .conn()
+        .execute(
+            "UPDATE corpus SET path = ?1, remote = ?2 WHERE id = ?3",
+            params![top, remote, found.id],
+        )
+        .map_err(sql)?;
+    find(store.conn(), name)
 }
 
 pub fn reindex(store: &mut Store, name: &str, rev: &str) -> crate::Result<(Corpus, IndexRun)> {
