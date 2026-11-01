@@ -98,12 +98,14 @@ fn bad() -> Reply {
 }
 
 fn read_line(reader: &mut BufReader<&TcpStream>, used: &mut usize) -> std::result::Result<String, Reply> {
-    let mut line = String::new();
-    let n = reader.read_line(&mut line).map_err(|_| bad())?;
+    let mut raw = Vec::new();
+    let room = (HEADERS_MAX.saturating_sub(*used) + 1) as u64;
+    let n = reader.by_ref().take(room).read_until(b'\n', &mut raw).map_err(|_| bad())?;
     *used += n;
-    if n == 0 || *used > HEADERS_MAX {
+    if n == 0 || *used > HEADERS_MAX || !raw.ends_with(b"\n") {
         return Err(bad());
     }
+    let line = String::from_utf8(raw).map_err(|_| bad())?;
     Ok(line.trim_end_matches(['\r', '\n']).to_string())
 }
 
@@ -125,8 +127,15 @@ fn read_request(stream: &TcpStream) -> std::result::Result<Head, Reply> {
             break;
         }
         if let Some((k, v)) = line.split_once(':') {
-            headers.insert(k.trim().to_ascii_lowercase(), v.trim().to_string());
+            let key = k.trim().to_ascii_lowercase();
+            let guarded = matches!(key.as_str(), "host" | "origin" | "authorization" | "content-length" | "transfer-encoding");
+            if headers.insert(key, v.trim().to_string()).is_some() && guarded {
+                return Err(Reply::error(400, "bad_request", "A header that is checked appears more than once."));
+            }
         }
+    }
+    if !path.starts_with('/') {
+        return Err(bad());
     }
     if headers.contains_key("transfer-encoding") {
         return Err(Reply::error(400, "bad_request", "Chunked bodies are not accepted; send a Content-Length."));
