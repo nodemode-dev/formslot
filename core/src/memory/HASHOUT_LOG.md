@@ -192,3 +192,11 @@ The S7 exit slot: formvis's Preferences dialog shell (SettingsDialog in frontend
 
 Ingest read only CLAUDE.md, AGENTS.md, one-level SKILL.md (items under a laws heading), NOTICE.md (items under four headings), HASHOUT logs, BUILD_NOTES and dev-wise. On the held-out gold 14 of the 49 convention and decline phrases were not in the store at all: sub-skill files (`.claude/skills/*/sub-skills/*/SUB-SKILL.md`, `references/*.md`), NOTICE table rows ("build tool only", "the CA bundle file is shipped unedited") and `docs/*.md` (MCP.md: "no tool writes files"). New `Class::Doc` covers every Markdown file under `.claude/skills/` and under `docs/` except `docs/eval/`; NOTICE.md also gets its other blocks and its table rows. Each paragraph, list item and table row under a heading becomes a derived `how-to` record (heading: first words as title, full text as text), so none of them can join the owner rules in P0 (those stay kind rule, authority owner) and none carry triggers, so the PreToolUse check does not act on them. Table rows come from the new `markdown::table_rows`, which skips separator rows and rows with fewer than two filled cells. Counts after `memory ingest`: subform 1148 to 1484 records, formslot 430 to 665, formvis 6300 to 8272. data/declines.json phrases (h081, h082, formMCP specs) are still not memory: that file holds formMCP's specs, not formslot's own rules, and reading it as formslot's would be a decision for the owner.
 
+### core/src/memory/ingest.rs · load_texts
+
+- refers-to: core/src/memory/ingest.rs :: load_texts
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+`load_texts` leaves out every file that has a `scan_finding` row for the corpus, so ingest never builds a record, decline or anchor from a file the secret scan flagged. Records are still redacted at insert; this keeps the flagged file's other text out of the store altogether.
+

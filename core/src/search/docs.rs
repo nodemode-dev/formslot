@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 pub const MAX_BYTES: i64 = 262_144;
 pub const SECTION_LEVEL: usize = 3;
 const MIN_SECTION_BYTES: usize = 24;
@@ -30,6 +32,9 @@ pub fn base_of(path: &str) -> &str {
 
 pub fn mode_of(path: &str, size: i64) -> Option<Mode> {
     if size <= 0 || size > MAX_BYTES {
+        return None;
+    }
+    if path.starts_with("docs/eval/") || path.contains("/docs/eval/") {
         return None;
     }
     let base = base_of(path);
@@ -68,25 +73,47 @@ fn heading_of(line: &str) -> Option<(usize, String)> {
     if !rest.starts_with(' ') && !rest.starts_with('\t') {
         return None;
     }
-    let title = rest.trim().trim_end_matches('#').trim();
+    let trimmed = rest.trim();
+    let hashes = trimmed.len() - trimmed.trim_end_matches('#').len();
+    let title = if hashes > 0 {
+        let head = &trimmed[..trimmed.len() - hashes];
+        if head.is_empty() {
+            ""
+        } else if head.ends_with(char::is_whitespace) {
+            head.trim_end()
+        } else {
+            trimmed
+        }
+    } else {
+        trimmed
+    };
     if title.is_empty() { None } else { Some((level, title.to_string())) }
 }
 
-fn is_fence(line: &str) -> bool {
+fn fence_of(line: &str) -> Option<(char, usize)> {
     let t = line.trim_start();
-    t.starts_with("```") || t.starts_with("~~~")
+    let c = t.chars().next()?;
+    if c != '`' && c != '~' {
+        return None;
+    }
+    let n = t.chars().take_while(|x| *x == c).count();
+    if n >= 3 { Some((c, n)) } else { None }
 }
 
-fn unique(taken: &mut Vec<String>, wanted: String) -> String {
-    if !taken.contains(&wanted) {
-        taken.push(wanted.clone());
+fn unique(taken: &mut HashMap<String, usize>, wanted: String) -> String {
+    let count = taken.entry(wanted.clone()).or_insert(0);
+    *count += 1;
+    if *count == 1 {
         return wanted;
     }
-    let mut n = 2;
+    let mut n = *count;
     loop {
         let candidate = format!("{wanted} ~{n}");
-        if !taken.contains(&candidate) {
-            taken.push(candidate.clone());
+        if !taken.contains_key(&candidate) {
+            taken.insert(candidate.clone(), 1);
+            if let Some(c) = taken.get_mut(&wanted) {
+                *c = n;
+            }
             return candidate;
         }
         n += 1;
@@ -102,7 +129,7 @@ pub fn markdown(path: &str, text: &str) -> Vec<DocUnit> {
     }
     let base = base_of(path).to_string();
     let mut out: Vec<DocUnit> = Vec::new();
-    let mut taken: Vec<String> = Vec::new();
+    let mut taken: HashMap<String, usize> = HashMap::new();
     let mut trail: Vec<(usize, String)> = Vec::new();
     let mut open = Open {
         title: base.clone(),
@@ -110,10 +137,10 @@ pub fn markdown(path: &str, text: &str) -> Vec<DocUnit> {
         start_byte: 0,
         start_line: 1,
     };
-    let mut fenced = false;
+    let mut fenced: Option<(char, usize)> = None;
     let mut offset = 0usize;
     let mut line_no = 0i64;
-    let close = |open: &Open, end_byte: usize, end_line: i64, out: &mut Vec<DocUnit>, taken: &mut Vec<String>| {
+    let close = |open: &Open, end_byte: usize, end_line: i64, out: &mut Vec<DocUnit>, taken: &mut HashMap<String, usize>| {
         let body = text.get(open.start_byte..end_byte).unwrap_or("");
         if body.trim().len() < MIN_SECTION_BYTES {
             return;
@@ -132,9 +159,13 @@ pub fn markdown(path: &str, text: &str) -> Vec<DocUnit> {
     for raw in text.split_inclusive('\n') {
         line_no += 1;
         let line = raw.trim_end_matches(['\n', '\r']);
-        if is_fence(line) {
-            fenced = !fenced;
-        } else if !fenced
+        if let Some((c, n)) = fence_of(line) {
+            match fenced {
+                None => fenced = Some((c, n)),
+                Some((oc, on)) if oc == c && n >= on && line.trim().chars().all(|x| x == c) => fenced = None,
+                Some(_) => {}
+            }
+        } else if fenced.is_none()
             && let Some((level, title)) = heading_of(line)
             && level <= SECTION_LEVEL
         {

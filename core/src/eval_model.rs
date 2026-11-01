@@ -258,10 +258,12 @@ fn kill_group(pid: u32) {
     let _ = Command::new("kill").arg("-KILL").arg(format!("-{pid}")).stdout(Stdio::null()).stderr(Stdio::null()).status();
 }
 
-fn call(bin: &Path, cwd: &Path, input: &str, model: Option<&str>) -> Finished {
+fn call(bin: &Path, cwd: &Path, input: &str, model: Option<&str>, budget: f64) -> Finished {
     let started = Instant::now();
     let mut cmd = Command::new(bin);
     cmd.current_dir(cwd)
+        .env_remove("ANTHROPIC_API_KEY")
+        .args(["--max-budget-usd", &format!("{budget:.4}")])
         .arg("-p")
         .args(["--output-format", "stream-json", "--verbose"])
         .arg("--tools")
@@ -312,7 +314,10 @@ fn call(bin: &Path, cwd: &Path, input: &str, model: Option<&str>) -> Finished {
     let mut timed_out = false;
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(_)) => {
+                kill_group(pid);
+                break;
+            }
             Ok(None) => {
                 if started.elapsed() >= limit {
                     timed_out = true;
@@ -360,8 +365,8 @@ fn main_model(v: &Value) -> String {
         .unwrap_or_default()
 }
 
-fn one(bin: &Path, cwd: &Path, gold: &Gold, arm: &str, run: usize, input: &str, pack_tokens: usize, model: Option<&str>) -> Run {
-    let fin = call(bin, cwd, input, model);
+fn one(bin: &Path, cwd: &Path, gold: &Gold, arm: &str, run: usize, input: &str, pack_tokens: usize, model: Option<&str>, budget: f64) -> Run {
+    let fin = call(bin, cwd, input, model, budget);
     let mut r = Run {
         task: gold.id.clone(),
         kind: gold.kind.clone(),
@@ -394,6 +399,10 @@ fn one(bin: &Path, cwd: &Path, gold: &Gold, arm: &str, run: usize, input: &str, 
         }
     }
     if !r.timed_out && r.answer.parsed {
+        let prefix = format!("{}/", cwd.display());
+        let bare = |s: &String| s.strip_prefix(prefix.as_str()).unwrap_or(s.as_str()).to_string();
+        r.answer.files = r.answer.files.iter().map(bare).collect();
+        r.answer.symbols = r.answer.symbols.iter().map(bare).collect();
         let (pass, full) = grade(&r.answer, gold);
         r.pass = pass;
         r.full = full;
@@ -446,19 +455,32 @@ pub fn summarise(arm: &str, runs: &[&Run]) -> ArmSummary {
     }
 }
 
+fn strip_links(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_symlink() {
+            let _ = std::fs::remove_file(&path);
+        } else if kind.is_dir() {
+            strip_links(&path);
+        }
+    }
+}
+
 fn checkout(target: &search::Target) -> crate::Result<PathBuf> {
     if !Path::new(&target.path).join(".git").exists() && !Path::new(&target.path).join("HEAD").exists() {
         return Err(format!("eval model: the corpus {} is not at {} (add it again with `formslot add`)", target.name, target.path));
     }
     let short: String = target.head.chars().take(12).collect();
-    let dest = config::data_dir().join("model-eval").join(format!("{}-{}", target.name, short));
+    let dest = config::data_dir().join("model-eval").join(format!("{}-{}-clean", target.name, short));
     if dest.join(".formslot-ready").exists() {
         return Ok(dest);
     }
     let _ = std::fs::remove_dir_all(&dest);
     std::fs::create_dir_all(&dest).map_err(|e| format!("eval model: cannot create {}: {e}", dest.display()))?;
     let mut archive = Command::new("git")
-        .args(["-C", &target.path, "archive", "--format=tar", &target.head])
+        .args(["-C", &target.path, "archive", "--format=tar", &target.head, "--", ".", ":(exclude)docs/eval"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -474,6 +496,7 @@ fn checkout(target: &search::Target) -> crate::Result<PathBuf> {
     if !status.success() || !tar.status.success() {
         return Err(format!("eval model: could not export {} at {}", target.name, target.head));
     }
+    strip_links(&dest);
     std::fs::write(dest.join(".formslot-ready"), &target.head).map_err(|e| format!("eval model: {e}"))?;
     let _ = Command::new("chmod").args(["-R", "a-w"]).arg(&dest).status();
     Ok(dest)
@@ -489,6 +512,9 @@ struct Job<'a> {
 }
 
 pub fn run(store: &mut Store, gold: Vec<Gold>, gold_path: &str, corpus: Option<&str>, opts: &Options) -> crate::Result<ModelReport> {
+    if !opts.cost_cap.is_finite() || opts.cost_cap <= 0.0 {
+        return Err("eval model: the cost cap must be a number of US dollars above zero".to_string());
+    }
     let gold: Vec<Gold> = match corpus {
         Some(c) => gold.into_iter().filter(|g| g.corpus == c).collect(),
         None => gold,
@@ -525,7 +551,8 @@ pub fn run(store: &mut Store, gold: Vec<Gold>, gold_path: &str, corpus: Option<&
         }
     }
     let next = AtomicUsize::new(0);
-    let spent = Mutex::new(0.0f64);
+    let spent = Mutex::new((0.0f64, 0.0f64));
+    let budget = opts.cost_cap / opts.jobs.max(1) as f64;
     let stopped: Mutex<Option<String>> = Mutex::new(None);
     let done: Mutex<Vec<(usize, Run)>> = Mutex::new(Vec::new());
     let model = opts.model.as_deref();
@@ -538,7 +565,7 @@ pub fn run(store: &mut Store, gold: Vec<Gold>, gold_path: &str, corpus: Option<&
                     }
                     let i = next.fetch_add(1, Ordering::SeqCst);
                     let Some(job) = jobs.get(i) else { return };
-                    let r = one(&bin, &job.cwd, job.gold, job.arm, job.run, &job.input, job.pack_tokens, model);
+                    let r = one(&bin, &job.cwd, job.gold, job.arm, job.run, &job.input, job.pack_tokens, model, budget);
                     eprintln!(
                         "eval model: {} {} run {} pass {} {:.0}s ${:.3}{}",
                         job.gold.id,
@@ -551,8 +578,15 @@ pub fn run(store: &mut Store, gold: Vec<Gold>, gold_path: &str, corpus: Option<&
                     );
                     let total = {
                         let mut s = spent.lock().unwrap_or_else(|e| e.into_inner());
-                        *s += r.cost;
-                        *s
+                        let charge = if r.timed_out {
+                            let guess = if s.1 > 0.0 { s.1 } else { budget };
+                            r.cost.max(guess)
+                        } else {
+                            r.cost
+                        };
+                        s.1 = s.1.max(r.cost);
+                        s.0 += charge;
+                        s.0
                     };
                     if total > opts.cost_cap
                         && let Ok(mut s) = stopped.lock()

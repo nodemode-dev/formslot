@@ -8,7 +8,7 @@ const SHORTEST_KNOWN: usize = 8;
 
 static KNOWN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-const SHAPES: [&str; 11] = [
+const SHAPES: [&str; 12] = [
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
     r"\bfmd_[A-Za-z0-9_\-]{16,}",
     r"\bsk-ant-[A-Za-z0-9_\-]{20,}",
@@ -19,7 +19,8 @@ const SHAPES: [&str; 11] = [
     r"\bAKIA[0-9A-Z]{16}\b",
     r"\bAIza[0-9A-Za-z_\-]{35}",
     r"\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}",
-    r"(?i)\b(bearer|token|api[_-]?key|secret|password)([\x22']?\s*[:=]\s*[\x22']?|\s+)[A-Za-z0-9._~+/\-]{20,}=*",
+    r"(://[^\s/:@]+:)()[^\s/]+(@)",
+    r"(?i)((?:^|[^A-Za-z0-9])[A-Za-z0-9_]*(?:bearer|token|api[_-]?key|secret|password|passwd))([\x22']?\s*[:=]\s*[\x22']?|\s+)[A-Za-z0-9._~+/\-]{20,}=*()",
 ];
 
 fn shapes() -> &'static Vec<Regex> {
@@ -58,8 +59,8 @@ pub fn text(input: &str) -> (String, usize) {
             continue;
         }
         found += n;
-        out = if i == SHAPES.len() - 1 {
-            shape.replace_all(&out, format!("$1$2{MARK}")).into_owned()
+        out = if i >= SHAPES.len() - 2 {
+            shape.replace_all(&out, format!("${{1}}${{2}}{MARK}${{3}}")).into_owned()
         } else {
             shape.replace_all(&out, MARK).into_owned()
         };

@@ -139,10 +139,12 @@ fn add_docs(
     data: &[u8],
 ) -> crate::Result<u64> {
     let mut added = 0;
+    let Ok(whole) = std::str::from_utf8(data) else {
+        return Ok(0);
+    };
     for (idx, u) in docs::units(mode, path, data).iter().enumerate() {
-        let slice = data.get(u.start_byte..u.end_byte).unwrap_or(&[]);
-        let body = String::from_utf8_lossy(slice).to_string();
-        let body = cut(&body, BODY_CAP).to_string();
+        let body = whole.get(u.start_byte..u.end_byte).unwrap_or("");
+        let body = cut(body, BODY_CAP).to_string();
         conn.prepare_cached(
             "INSERT INTO search_unit (corpus_id, path, oid, idx, kind, name, qualified, signature, exported, \
              start_byte, end_byte, start_line, end_line) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?11, ?12)",
@@ -207,6 +209,7 @@ pub fn sync(conn: &Connection, corpus_id: i64, format: &str, repo: &Repo) -> cra
                 "SELECT f.path, f.oid, f.size FROM file f JOIN blob b ON b.object_format = ?2 AND b.oid = f.oid \
                  WHERE f.corpus_id = ?1 AND b.is_binary = 0 \
                  AND f.role IN ('source', 'doc', 'data') \
+                 AND NOT EXISTS (SELECT 1 FROM scan_finding sf WHERE sf.corpus_id = f.corpus_id AND sf.path = f.path) \
                  AND NOT EXISTS (SELECT 1 FROM unit u WHERE u.object_format = ?2 AND u.oid = f.oid) \
                  AND NOT EXISTS (SELECT 1 FROM search_unit s WHERE s.corpus_id = f.corpus_id AND s.path = f.path AND s.oid = f.oid) \
                  ORDER BY f.path",

@@ -53,6 +53,9 @@ fn run_model(args: &[String], gold_path: &str) -> ExitCode {
         opts.seed = count(args, "--seed", opts.seed as usize)? as u64;
         if let Some(text) = option(args, "--max-cost") {
             opts.cost_cap = text.trim().parse::<f64>().map_err(|_| format!("--max-cost is a number of US dollars, not {text}"))?;
+            if !opts.cost_cap.is_finite() || opts.cost_cap <= 0.0 {
+                return Err(format!("--max-cost must be a finite number above zero, not {text}"));
+            }
         }
         Ok(())
     })();

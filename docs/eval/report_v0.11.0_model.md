@@ -1,6 +1,6 @@
 # formslot model evaluation
 
-formslot 0.10.2 · gold set `docs/eval/gold.jsonl` · 30 tasks sampled (seed 1, stratified by kind) · 1 run(s) per task per arm
+formslot v0.11.0 (pre-release build) · gold set `docs/eval/gold.jsonl` · 30 tasks sampled (seed 1, stratified by kind) · 1 run(s) per task per arm
 
 ## Set
 

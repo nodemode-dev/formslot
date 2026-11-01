@@ -512,7 +512,11 @@ fn load_texts(conn: &Connection, repo: &Repo, corpus_id: i64) -> crate::Result<V
     let mut files: Vec<(Class, String, String)> = Vec::new();
     {
         let mut stmt = conn
-            .prepare("SELECT path, oid, role FROM file WHERE corpus_id = ?1 ORDER BY path")
+            .prepare(
+                "SELECT f.path, f.oid, f.role FROM file f WHERE f.corpus_id = ?1 \
+                 AND NOT EXISTS (SELECT 1 FROM scan_finding sf WHERE sf.corpus_id = f.corpus_id AND sf.path = f.path) \
+                 ORDER BY f.path",
+            )
             .map_err(sql)?;
         let rows = stmt
             .query_map(params![corpus_id], |r| {

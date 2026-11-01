@@ -214,3 +214,19 @@ Memory ingest now reads each corpus's own docs (see core/src/memory/HASHOUT_LOG.
 - logged: v0.11.0 · 2026-10-30
 
 Not fixed by this change, seen on the tuning half: expected code that the task describes in words the code does not use stays low (h042 find_bin for "finds an executable on this machine" is not in the top 100; h106 dedup.rs at 59 for "near-copies in tiers"; h112 redact.rs at 77 for "scrub a key"; h039 dom.ts at 43). That is a vocabulary gap the lexical tiers cannot close; the dense tier is the intended fix. Slots from another repository also take the top five ranks of unrelated tasks (their text match alone is enough to enter at weight 2.0); not changed because the formvis tuning leans on it.
+
+### core/src/search/index.rs · sync, add_docs
+
+- refers-to: core/src/search/index.rs :: sync
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+The doc-unit query skips any file that has a `scan_finding` row for its corpus, so a file the secret scan flagged is never turned into searchable section or text units. `add_docs` returns nothing for a blob that is not valid UTF-8 and slices the body from the decoded text by the unit's byte range; lossy decoding changed byte lengths and made the stored offsets point at the wrong text.
+
+### core/src/search/docs.rs · mode_of, heading_of, markdown, unique
+
+- refers-to: core/src/search/docs.rs :: markdown
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+`mode_of` returns None under `docs/eval/` so the evaluation's own gold and reports cannot be retrieved as answers. A heading loses only a closing `\s+#+` sequence, so `## C#` stays `C#`. The open fence remembers its marker character and length: a `~~~` line inside a backtick fence no longer toggles, and only a bare marker at least as long closes it. Duplicate section trails are numbered from a HashMap counter instead of rescanning a Vec for each retry, which was quadratic on files with many equal headings.

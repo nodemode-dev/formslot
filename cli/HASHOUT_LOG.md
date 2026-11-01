@@ -213,3 +213,11 @@ A stale `service.json` (dead or reused pid, nothing or something else on its por
 - logged: v0.11.0 · 2026-10-30
 
 `--arm model` is handled before `Arm::parse` so it can never be reached through `--arm all` and eval.rs needs no new variant; it prints the model report's own table and gate lines and writes its own Markdown with `--out`. The work is in core/src/eval_model.rs.
+
+### cli/src/eval_cmd.rs · run_model (--max-cost)
+
+- refers-to: cli/src/eval_cmd.rs :: run_model
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+`--max-cost` is refused unless it is finite and above zero: NaN and negative caps made the spend check never or always fire. The engine repeats the check, so a library caller gets the same refusal.

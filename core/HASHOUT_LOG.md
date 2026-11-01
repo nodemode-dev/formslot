@@ -1225,3 +1225,27 @@ The model arm is the only eval arm that calls a model, so it lives apart from ev
 - logged: v0.11.0 · 2026-10-30
 
 `nearest` and `POOL_DENSE` are public so `search --dense` and the eval dense arm share one statement; the eval arm used a copy with a fixed 400 neighbours. The review note was right that vec0 cuts to k neighbours before the corpus filter, so a scoped search could return fewer than the pool even when the corpus had enough vectors. It now starts at max(4 x limit, limit + 50), and while the filtered list is short it multiplies k by 4, stopping when k reaches the number of vectors in the store or 4096 (the vec0 k limit). First end to end run on formvis: 17,608 units in 4,235 s (4.16 units per second, 2 cores), so the 2.5 hour estimate was about 2x too high.
+
+### core/src/redact.rs · SHAPES
+
+- refers-to: core/src/redact.rs :: SHAPES
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+The keyword secret shape began with `\b`, which does not fire between `_` and a letter, so `client_secret": "..."` and `DB_PASSWORD=...` passed through, and v0.11.0 sends config, script and doc files to agents. It now starts at a non-alphanumeric boundary or the text start, allows `[A-Za-z0-9_]*` before the keyword, and adds `passwd`; the prefix and separator are kept and only the value is replaced. A new shape redacts the password in `://user:pass@host` and keeps the user and the `@`. The last two shapes share one replacement, `${1}${2}MARK${3}`. The regex crate matches in linear time. Checked against the regex version in Cargo.lock on four samples: both keyword forms and the URL are redacted, `tokenizer config` is left alone.
+
+### core/src/eval_model.rs · call, run
+
+- refers-to: core/src/eval_model.rs :: call
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+Each claude call gets `--max-budget-usd cap/jobs` and loses `ANTHROPIC_API_KEY` from its environment, so a run bills the user's Claude Code login as documented and not an API key. The cap must be finite and above zero (`nan` had disabled it). A run that times out never reports a cost, so it is charged the larger of its cost and the highest per-run cost seen so far (cap/jobs before any run has finished) toward the stop check; the per-run cost in the report is left as measured. After a clean exit the whole process group is killed before the reader threads are joined, so a grandchild holding the pipe cannot hang the run.
+
+### core/src/eval_model.rs · checkout, one
+
+- refers-to: core/src/eval_model.rs :: checkout
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+The export leaves out `docs/eval` (a `git archive` exclude pathspec) so the gold sets and earlier reports cannot be read by the model, and symlinks are removed from the exported tree after extraction so a link cannot lead a read outside it. The directory carries a `-clean` suffix so an older export that still holds docs/eval is not reused. The v0.11.0 model report ran before this exclusion but on a formvis checkout, which holds no gold file, so it was not affected. Answers that name a file by its absolute path inside the checkout have that prefix stripped before grading.
