@@ -205,3 +205,11 @@ A stale `service.json` (dead or reused pid, nothing or something else on its por
 - logged: v0.10.2 · 2026-10-30
 
 `--half` is now `all|tuning|held-out` (`even` and `odd` are gone: line parity put neighbouring tasks, which share files and commits, in both halves). The split is by cluster; see core/src/eval.rs.
+
+### cli/src/eval_cmd.rs · run_model
+
+- refers-to: cli/src/eval_cmd.rs :: run_model
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+`--arm model` is handled before `Arm::parse` so it can never be reached through `--arm all` and eval.rs needs no new variant; it prints the model report's own table and gate lines and writes its own Markdown with `--out`. The work is in core/src/eval_model.rs.
