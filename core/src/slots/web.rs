@@ -65,6 +65,26 @@ pub fn list(query: &str) -> Reply {
     }
 }
 
+fn file_filter(query: &str) -> Option<String> {
+    query
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .find(|(k, _)| *k == "file")
+        .map(|(_, v)| v.replace("%2F", "/").replace("%2f", "/"))
+}
+
+pub fn source(id: &str, query: &str) -> Reply {
+    if !manifest::is_id(id) {
+        return Reply::error(404, "not_found", "No such slot.");
+    }
+    let file = file_filter(query);
+    match open().and_then(|store| super::source::read(store.conn(), id, file.as_deref(), super::source::Caps::STANDARD)) {
+        Ok(Some(value)) => Reply::ok(&value),
+        Ok(None) => Reply::error(404, "not_found", "No such slot."),
+        Err(message) => Reply::error(422, "failed", &message),
+    }
+}
+
 pub fn get(id: &str) -> Reply {
     if !manifest::is_id(id) {
         return Reply::error(404, "not_found", "No such slot.");

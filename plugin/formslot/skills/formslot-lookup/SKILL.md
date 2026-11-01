@@ -1,6 +1,6 @@
 ---
 name: formslot-lookup
-description: Look up existing code, shared slots, how-to notes and owner rules in a Form family repository before writing a new component, helper, panel, dialog, control row, store or style. Use when asked to add or build something that may already exist, when a formslot hook warns about reuse or denies a write, when a hook message names a slot, when unsure whether the owner declined a feature, or when formslot setup or the MCP server needs fixing. Uses slot_find, slot_get, slot_context_pack and slot_conventions from the formslot MCP server, or the formslot command line.
+description: Look up existing code, shared slots, how-to notes and owner rules in a Form family repository before writing a new component, helper, panel, dialog, control row, store or style. Use when asked to add or build something that may already exist, when a formslot hook warns about reuse or denies a write, when a hook message names a slot, when unsure whether the owner declined a feature, or when formslot setup or the MCP server needs fixing. Uses slot_find, slot_get, slot_source, slot_context_pack and slot_conventions from the formslot MCP server, or the formslot command line.
 ---
 
 # formslot lookup
@@ -22,7 +22,9 @@ Skip the lookup for edits inside a file you already know, for tests of existing 
 3. Run slot_conventions with the feature name as the topic. An owner record of kind declined means stop: quote the rule and its source to the user and do not build it. Other owner rules apply to how you build.
 4. Open the file at the path and line given and confirm it still matches. The index is built from a commit and can lag the working tree. slot_reindex refreshes a repository when the index is stale.
 
-Without the MCP server, the same lookups run from a shell: `formslot search "WORDS"`, `formslot slot get ID`, `formslot pack "TASK"`, `formslot recall "FEATURE"`.
+After the owner answers Use or Adapt for a slot whose code lives in another repository, that code is not in your worktree: call slot_source with the slot id (and file, a path from slot_get, to read one file). It returns each file at the slot's pinned commit inside the excerpt envelope, with the slot's exports and conventions. Honour the copy verdict and the file's port mode (verbatim, adapt, rename-strings-only), and when it reports truncated or omitted files, fetch them one at a time with file.
+
+Without the MCP server, the same lookups run from a shell: `formslot search "WORDS"`, `formslot slot get ID`, `formslot slot source ID [--file PATH]`, `formslot pack "TASK"`, `formslot recall "FEATURE"`.
 
 ## Reading a pack
 

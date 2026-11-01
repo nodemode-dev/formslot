@@ -1273,3 +1273,27 @@ The corpus name is stored in one place as a key, `corpus.name`; everything else 
 - logged: v0.14.0 · 2026-10-31
 
 This corrects the earlier entry that said keys over 400 bytes are dropped: dropping them meant a write to a long path was warned about on every retry. Warn and audited keys over 400 bytes are now folded to `h:` plus 32 hex characters of their SHA-256, so they dedupe like short keys. `written` entries are kept verbatim up to 4096 bytes, because the Stop audit reads them back as real relative paths, and the state file read cap is 1 MiB so 200 long paths still fit. `rename` now takes an immediate transaction and re-checks the name inside it.
+
+### core/src/slots/source.rs · read
+
+- refers-to: core/src/slots/source.rs :: read, Caps, cut_text
+- kind: rationale
+- logged: v0.15.0 · 2026-10-31
+
+Subform's testing found that after the owner answers Adapt or Use at a gate for a slot whose code lives in another repository, the agent had no way to get the code: no tool or route returned a slot's source and the other repository is outside its worktree. `read` is the one engine function behind the MCP tool, the command and the route. It resolves the manifest's `origin.repo` to an indexed corpus, takes `origin.commit` (the corpus head, with `pinned: false`, when the manifest has none), and asks the corpus checkout's `git cat-file --batch` for `<commit>:<path>` for each manifest file, so the text is the pinned commit's and never the working tree's. Paths pass `safe_relative` first. Order of work per file: read bytes, hash them with `hash_text` for `matchesManifest`, redact the whole text with `redact::text` (the second secret scan, before any cut so a secret that straddles the cap is still found), then cut. Caps are 64 KiB per file and 256 KiB over the redacted text in total, cut at a line boundary; a file starting past the total cap goes to `omitted` with its size, never silently dropped, and the top-level `truncated` says anything was cut. A file holding a NUL byte is reported `binary` with no text. Licence is the manifest's `license`, else the file's detected licence, and the copy verdict is `pack::copy_verdict`. The exports (`api.exports`, css names), conventions (`invariants`), owner declines and `dependsOn` ride along as a summary so the agent does not need a second `slot_get`. An unknown slot is `None` (404 on the route); an unknown `file`, a corpus that is not indexed and a commit missing from the checkout are errors that name the fix.
+
+### core/src/mcp/tools.rs · source
+
+- refers-to: core/src/mcp/tools.rs :: source; core/src/mcp/schema.rs :: tools
+- kind: rationale
+- logged: v0.15.0 · 2026-10-31
+
+`slot_source` bypasses `page::text_result` on purpose: that helper holds a result under 25,000 tokens and drops structured content that is over half of it, which would cut file text, and Claude Code itself truncates an MCP result near that size. So the tool carries its own caps: 64 KiB per file as in the engine, 72 KiB per call (the engine's 256 KiB is for the command and the route), one text block per file holding the envelope JSON, a header block with the summary, exports and conventions, and `structuredContent` without the file texts so nothing is sent twice. The header names the omitted paths so the agent can fetch each with `file`. Both the header and the structured content pass `redact` again. The tool description tells the agent to call it after Use or Adapt and to honour the copy verdict and port mode. `slot_source` is listed beside `slot_get`, readOnly, and the server instructions and the unknown-tool message now say nine tools.
+
+### core/src/slots/web.rs · source
+
+- refers-to: core/src/slots/web.rs :: source, file_filter; core/src/api.rs :: route, allowed
+- kind: explainer
+- logged: v0.15.0 · 2026-10-31
+
+The route `GET /api/slots/<id>/source[?file=PATH]` lives in `api.rs` (the router) and calls `web::source`, which uses the standard 64 KiB / 256 KiB caps. `file_filter` decodes only `%2F`, because slot paths are repository-relative with no other characters needing escapes; an unknown id is 404, other failures 422 as the other slot routes do.

@@ -11,7 +11,7 @@ pub(crate) static INDEXING: Mutex<()> = Mutex::new(());
 
 fn allowed(parts: &[&str]) -> Option<&'static str> {
     match parts {
-        ["api", "health"] | ["api", "slots"] | ["api", "slots", _] | ["api", "corpus", _, "stats"] => Some("GET"),
+        ["api", "health"] | ["api", "slots"] | ["api", "slots", _] | ["api", "slots", _, "source"] | ["api", "corpus", _, "stats"] => Some("GET"),
         ["api", "corpus"] => Some("GET, POST"),
         ["api", "corpus", _, "reindex"] | ["api", "shutdown"] => Some("POST"),
         ["api", "lease"] => Some("GET, POST"),
@@ -119,6 +119,7 @@ fn dispatch(req: &Request) -> Reply {
         }
         ("GET", ["api", "slots"]) => slots::web::list(&req.query),
         ("GET", ["api", "slots", id]) => slots::web::get(id),
+        ("GET", ["api", "slots", id, "source"]) => slots::web::source(id, &req.query),
         ("POST", ["mcp"]) => crate::mcp::http::post(&req.body),
         (_, ["mcp"]) => Reply::error(405, "method_not_allowed", "POST JSON-RPC messages to /mcp.").with_header("Allow", "POST"),
         (_, other) => match allowed(other) {
