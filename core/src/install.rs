@@ -532,3 +532,263 @@ pub fn install(repo: &Path, mode: Mode, enable: bool, dry_run: bool) -> crate::R
     }
     Ok(Report { lines })
 }
+
+fn child_spans(container: &Node) -> Vec<(usize, usize)> {
+    match &container.kind {
+        jsonedit::Kind::Object(members) => members.iter().map(|m| (m.key_start, m.value.end)).collect(),
+        jsonedit::Kind::Array(items) => items.iter().map(|n| (n.start, n.end)).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn remove_child(container: &Node, index: usize) -> Splice {
+    let spans = child_spans(container);
+    let n = spans.len();
+    if n == 1 {
+        let empty = if container.is_object() { "{}" } else { "[]" };
+        return Splice { start: container.start, end: container.end, text: empty.to_string() };
+    }
+    if index + 1 < n {
+        Splice { start: spans[index].0, end: spans[index + 1].0, text: String::new() }
+    } else {
+        Splice { start: spans[index - 1].1, end: spans[index].1, text: String::new() }
+    }
+}
+
+fn member_index(container: &Node, key: &str) -> Option<usize> {
+    match &container.kind {
+        jsonedit::Kind::Object(members) => members.iter().position(|m| m.key == key),
+        _ => None,
+    }
+}
+
+fn is_ours_handler(node: &Node) -> bool {
+    node.get("command").and_then(Node::text).is_some_and(is_ours)
+}
+
+fn settings_step(root: &Node) -> Option<(Splice, String)> {
+    if let Some(hooks) = root.get("hooks")
+        && let jsonedit::Kind::Object(events) = &hooks.kind
+    {
+        for (ei, event) in events.iter().enumerate() {
+            let jsonedit::Kind::Array(groups) = &event.value.kind else { continue };
+            for (gi, group) in groups.iter().enumerate() {
+                let Some(handlers) = group.get("hooks") else { continue };
+                for (hi, handler) in handlers.items().iter().enumerate() {
+                    if !is_ours_handler(handler) {
+                        continue;
+                    }
+                    let note = format!("hooks.{}: formslot hook removed", event.key);
+                    let plain_group = match &group.kind {
+                        jsonedit::Kind::Object(m) => m.iter().all(|x| x.key == "matcher" || x.key == "hooks"),
+                        _ => false,
+                    };
+                    if handlers.items().len() != 1 || !plain_group {
+                        return Some((remove_child(handlers, hi), note));
+                    }
+                    if groups.len() != 1 {
+                        return Some((remove_child(&event.value, gi), note));
+                    }
+                    if events.len() != 1 {
+                        return Some((remove_child(hooks, ei), note));
+                    }
+                    let at = member_index(root, "hooks")?;
+                    return Some((remove_child(root, at), note));
+                }
+            }
+        }
+    }
+    if let Some(list) = root.get("enabledMcpjsonServers").filter(|a| a.is_array())
+        && let Some(i) = list.items().iter().position(|x| x.text() == Some(SERVER))
+    {
+        let note = "enabledMcpjsonServers: formslot removed".to_string();
+        if list.items().len() == 1 {
+            let at = member_index(root, "enabledMcpjsonServers")?;
+            return Some((remove_child(root, at), note));
+        }
+        return Some((remove_child(list, i), note));
+    }
+    None
+}
+
+fn kept_handlers(value: &Value) -> (Vec<Value>, usize) {
+    let mut kept = Vec::new();
+    let mut ours = 0;
+    if let Some(events) = value.get("hooks").and_then(Value::as_object) {
+        for groups in events.values().filter_map(Value::as_array) {
+            for group in groups {
+                for handler in group.get("hooks").and_then(Value::as_array).into_iter().flatten() {
+                    if handler.get("command").and_then(Value::as_str).is_some_and(is_ours) {
+                        ours += 1;
+                    } else {
+                        kept.push(handler.clone());
+                    }
+                }
+            }
+        }
+    }
+    (kept, ours)
+}
+
+pub fn unmerge_settings(text: &str) -> crate::Result<(String, Vec<String>)> {
+    let mut current = text.to_string();
+    let mut notes: Vec<String> = Vec::new();
+    for _ in 0..256 {
+        let root = jsonedit::parse(&current)?;
+        if !root.is_object() {
+            return Err("the settings file is not a JSON object".to_string());
+        }
+        let Some((splice, note)) = settings_step(&root) else { break };
+        current = jsonedit::apply(&current, vec![splice]);
+        if !notes.contains(&note) {
+            notes.push(note);
+        }
+    }
+    let before: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    let after: Value = serde_json::from_str(&current).map_err(|e| format!("the removal produced invalid JSON: {e}"))?;
+    let (Some(b), Some(a)) = (before.as_object(), after.as_object()) else {
+        return Err("the settings file is not a JSON object".to_string());
+    };
+    for (key, old_value) in b {
+        if key == "hooks" || key == "enabledMcpjsonServers" {
+            continue;
+        }
+        if a.get(key) != Some(old_value) {
+            return Err(format!("the removal would change the value of {key}; nothing was written"));
+        }
+    }
+    let (kept_before, _) = kept_handlers(&before);
+    let (kept_after, ours_after) = kept_handlers(&after);
+    if kept_before != kept_after || ours_after != 0 {
+        return Err("the removal would change hooks that are not formslot's; nothing was written".to_string());
+    }
+    let others = |v: &Value| -> Vec<Value> {
+        v.get("enabledMcpjsonServers")
+            .and_then(Value::as_array)
+            .map(|x| x.iter().filter(|i| i.as_str() != Some(SERVER)).cloned().collect())
+            .unwrap_or_default()
+    };
+    if others(&before) != others(&after) {
+        return Err("the removal would change enabledMcpjsonServers beyond formslot; nothing was written".to_string());
+    }
+    Ok((current, notes))
+}
+
+pub fn unmerge_mcp(text: &str) -> crate::Result<(String, String)> {
+    let root = jsonedit::parse(text)?;
+    if !root.is_object() {
+        return Err("the .mcp.json file is not a JSON object".to_string());
+    }
+    let Some(servers) = root.get("mcpServers").filter(|m| m.is_object()) else {
+        return Ok((text.to_string(), "no formslot entry".to_string()));
+    };
+    let Some(index) = member_index(servers, SERVER) else {
+        return Ok((text.to_string(), "no formslot entry".to_string()));
+    };
+    let existing = servers.get(SERVER).ok_or_else(|| "no formslot entry".to_string())?;
+    let ours = existing.get("command").and_then(Node::text).is_some_and(is_our_program)
+        && existing.get("args").is_some_and(|a| a.items().len() == 1 && a.items()[0].text() == Some("mcp"));
+    if !ours {
+        return Ok((text.to_string(), "the formslot entry was changed by hand, left as it is".to_string()));
+    }
+    let splice = if child_spans(servers).len() == 1 {
+        let at = member_index(&root, "mcpServers").ok_or_else(|| "no formslot entry".to_string())?;
+        remove_child(&root, at)
+    } else {
+        remove_child(servers, index)
+    };
+    let merged = jsonedit::apply(text, vec![splice]);
+    let before: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    let after: Value = serde_json::from_str(&merged).map_err(|e| format!("the removal produced invalid JSON: {e}"))?;
+    if let (Some(b), Some(a)) = (before.as_object(), after.as_object()) {
+        for (k, v) in b {
+            if k != "mcpServers" && a.get(k) != Some(v) {
+                return Err(format!("the removal would change {k}; nothing was written"));
+            }
+        }
+        let others = |v: &Value| -> Vec<(String, Value)> {
+            v.get("mcpServers")
+                .and_then(Value::as_object)
+                .map(|m| m.iter().filter(|(k, _)| k.as_str() != SERVER).map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default()
+        };
+        if others(&before) != others(&after) {
+            return Err("the removal would change other servers; nothing was written".to_string());
+        }
+    }
+    Ok((merged, "formslot server removed".to_string()))
+}
+
+pub struct Disconnect {
+    pub lines: Vec<String>,
+    pub settings: bool,
+    pub mcp: bool,
+    pub backups: Vec<PathBuf>,
+}
+
+fn planned(path: &Path, remove: impl Fn(&str) -> crate::Result<(String, String)>) -> crate::Result<(Option<String>, String, bool)> {
+    let Some(text) = read_optional(path)? else {
+        return Ok((None, "no such file".to_string(), false));
+    };
+    let (plain, shape) = unwrap_text(&text);
+    let (out, note) = remove(&plain).map_err(|e| format!("{}: {e}", path.display()))?;
+    let out = rewrap(out, &shape);
+    let changed = out != text;
+    Ok((Some(out), note, changed))
+}
+
+fn settings_remove(plain: &str) -> crate::Result<(String, String)> {
+    let (out, notes) = unmerge_settings(plain)?;
+    let note = if notes.is_empty() { "no formslot entries".to_string() } else { notes.join("; ") };
+    Ok((out, note))
+}
+
+pub fn connection(repo: &Path) -> crate::Result<(bool, bool)> {
+    let (_, _, settings) = planned(&repo.join(".claude").join("settings.json"), settings_remove)?;
+    let (_, _, mcp) = planned(&repo.join(".mcp.json"), unmerge_mcp)?;
+    Ok((settings, mcp))
+}
+
+pub fn backup_name(path: &Path) -> PathBuf {
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let mut copy = path.with_file_name(format!("{name}.formslot-backup"));
+    if copy.exists() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        copy = path.with_file_name(format!("{name}.formslot-backup-{stamp}"));
+        let mut n = 1;
+        while copy.exists() {
+            copy = path.with_file_name(format!("{name}.formslot-backup-{stamp}-{n}"));
+            n += 1;
+        }
+    }
+    copy
+}
+
+pub fn disconnect(repo: &Path, dry_run: bool) -> crate::Result<Disconnect> {
+    if !repo.is_dir() {
+        return Err(format!("{} is not a folder", repo.display()));
+    }
+    no_link(&repo.join(".claude"))?;
+    let settings_path = repo.join(".claude").join("settings.json");
+    let mcp_path = repo.join(".mcp.json");
+    let (settings_text, settings_note, settings) = planned(&settings_path, settings_remove)?;
+    let (mcp_text, mcp_note, mcp) = planned(&mcp_path, unmerge_mcp)?;
+    let verb = if dry_run { "would change" } else { "changed" };
+    let mut lines = Vec::new();
+    let mut backups = Vec::new();
+    for (path, text, note, changed) in [(&settings_path, settings_text, settings_note, settings), (&mcp_path, mcp_text, mcp_note, mcp)] {
+        if !changed {
+            lines.push(format!("{}: nothing to remove ({note})", path.display()));
+            continue;
+        }
+        lines.push(format!("{}: {verb} ({note})", path.display()));
+        if !dry_run && let Some(text) = text {
+            let copy = backup_name(path);
+            std::fs::copy(path, &copy).map_err(|e| format!("cannot back up {}: {e}", path.display()))?;
+            write_atomic(path, &text)?;
+            lines.push(format!("  backup saved as {}", copy.display()));
+            backups.push(copy);
+        }
+    }
+    Ok(Disconnect { lines, settings, mcp, backups })
+}

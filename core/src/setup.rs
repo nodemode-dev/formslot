@@ -441,3 +441,168 @@ pub fn clean_path(raw: &str) -> String {
     }
     s
 }
+
+pub fn rc_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    let env_dir = |name: &str| env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    if let Some(d) = env_dir("ZDOTDIR") {
+        out.push(d.join(".zshrc"));
+    }
+    if let Some(d) = env_dir("XDG_CONFIG_HOME") {
+        out.push(d.join("fish").join("config.fish"));
+    }
+    if let Some(h) = home_dir() {
+        for n in [".zshrc", ".bashrc", ".bash_profile", ".bash_login", ".profile", ".config/fish/config.fish"] {
+            out.push(h.join(n));
+        }
+    }
+    let mut seen: Vec<PathBuf> = Vec::new();
+    for p in out {
+        if !seen.contains(&p) {
+            seen.push(p);
+        }
+    }
+    seen
+}
+
+fn rc_block_lines(bytes: &[u8]) -> Vec<usize> {
+    let lines: Vec<&[u8]> = bytes.split_inclusive(|b| *b == b'\n').collect();
+    let mut hits = Vec::new();
+    for i in 0..lines.len() {
+        if lines[i].trim_ascii() != RC_MARKER.as_bytes() {
+            continue;
+        }
+        if let Some(next) = lines.get(i + 1) {
+            let t = next.trim_ascii();
+            if t.starts_with(b"export PATH=") || t.starts_with(b"fish_add_path ") {
+                hits.push(i);
+            }
+        }
+    }
+    hits
+}
+
+pub fn rc_marked() -> Vec<PathBuf> {
+    rc_candidates()
+        .into_iter()
+        .filter(|p| p.is_file() && fs::read(p).map(|b| !rc_block_lines(&b).is_empty()).unwrap_or(false))
+        .collect()
+}
+
+pub struct RcRemoval {
+    pub removed: usize,
+    pub backup: Option<PathBuf>,
+}
+
+pub fn remove_rc_block(file: &Path, dry_run: bool) -> crate::Result<RcRemoval> {
+    let bytes = match fs::read(file) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(RcRemoval { removed: 0, backup: None }),
+        Err(e) => return Err(format!("cannot read {}: {e}", file.display())),
+    };
+    let hits = rc_block_lines(&bytes);
+    if hits.is_empty() {
+        return Ok(RcRemoval { removed: 0, backup: None });
+    }
+    let lines: Vec<&[u8]> = bytes.split_inclusive(|b| *b == b'\n').collect();
+    let mut drop = vec![false; lines.len()];
+    for i in &hits {
+        drop[*i] = true;
+        drop[*i + 1] = true;
+        if *i > 0 && lines[*i - 1].trim_ascii().is_empty() && *i - 1 > 0 {
+            drop[*i - 1] = true;
+        }
+    }
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    for (i, line) in lines.iter().enumerate() {
+        if !drop[i] {
+            out.extend_from_slice(line);
+        }
+    }
+    if dry_run {
+        return Ok(RcRemoval { removed: hits.len(), backup: None });
+    }
+    let copy = crate::install::backup_name(file);
+    fs::copy(file, &copy).map_err(|e| format!("cannot back up {}: {e}", file.display()))?;
+    let temp = file.with_file_name(format!(".formslot-rc-{}", std::process::id()));
+    fs::write(&temp, &out).map_err(|e| format!("cannot write {}: {e}", temp.display()))?;
+    if let Ok(meta) = fs::metadata(file) {
+        let _ = fs::set_permissions(&temp, meta.permissions());
+    }
+    fs::rename(&temp, file).map_err(|e| {
+        let _ = fs::remove_file(&temp);
+        format!("cannot write {}: {e}", file.display())
+    })?;
+    Ok(RcRemoval { removed: hits.len(), backup: Some(copy) })
+}
+
+pub fn windows_path_has_script(dir: &Path) -> String {
+    let d = dir.to_string_lossy().replace('\'', "''");
+    format!(
+        "$d='{d}'.TrimEnd('\\'); \
+$k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); \
+$p=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $k.Close(); \
+if (($p -split ';' | ForEach-Object {{ $_.Trim().TrimEnd('\\') }}) -contains $d) {{ Write-Output 'yes' }} else {{ Write-Output 'no' }}"
+    )
+}
+
+pub fn windows_path_remove_script(dir: &Path, backup: &Path) -> String {
+    let d = dir.to_string_lossy().replace('\'', "''");
+    let b = backup.to_string_lossy().replace('\'', "''");
+    format!(
+        "$d='{d}'.TrimEnd('\\'); $b='{b}'; \
+$k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); \
+$p=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $k.Close(); \
+$parts=@($p -split ';'); \
+$keep=@($parts | Where-Object {{ $_.Trim().TrimEnd('\\') -ne $d }}); \
+if ($keep.Count -ne $parts.Count) {{ \
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $b) | Out-Null; \
+Set-Content -LiteralPath $b -Value $p -Encoding UTF8; \
+Write-Host ('Saved a copy of your user Path in ' + $b); \
+$w=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); \
+$w.SetValue('Path',($keep -join ';'),[Microsoft.Win32.RegistryValueKind]::ExpandString); $w.Close(); \
+[Environment]::SetEnvironmentVariable('FORMSLOT_PATH_NOTIFY',$null,'User'); Write-Output 'removed' }} else {{ Write-Output 'absent' }}"
+    )
+}
+
+pub fn remove_binary(dir: &Path) -> crate::Result<bool> {
+    let target = dir.join(binary_name());
+    if fs::symlink_metadata(&target).is_err() {
+        return Ok(false);
+    }
+    fs::remove_file(&target).map_err(|e| format!("cannot remove {}: {e}", target.display()))?;
+    let _ = fs::remove_file(dir.join(format!("{}.new", binary_name())));
+    if cfg!(windows) {
+        let _ = fs::remove_dir(dir);
+    }
+    Ok(true)
+}
+
+pub fn data_dir_refusal(dir: &Path) -> Option<String> {
+    let canon = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    if canon.parent().is_none() || canon.components().count() < 3 {
+        return Some(format!("{} is too close to the top of the disk to delete safely", dir.display()));
+    }
+    if let Some(home) = home_dir() {
+        let home = home.canonicalize().unwrap_or(home);
+        if canon == home || home.starts_with(&canon) {
+            return Some(format!("{} holds your home folder, so it is not deleted", dir.display()));
+        }
+    }
+    if fs::symlink_metadata(dir).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Some(format!("{} is a link, so it is not deleted", dir.display()));
+    }
+    let ours = ["corpus.sqlite", "service.json", "formslot.log", "bin"].iter().any(|n| dir.join(n).exists());
+    let empty = fs::read_dir(dir).map(|mut d| d.next().is_none()).unwrap_or(false);
+    if !ours && !empty {
+        return Some(format!("{} does not look like a formslot data folder (no corpus.sqlite), so it is not deleted", dir.display()));
+    }
+    None
+}
+
+pub fn remove_data_dir(dir: &Path) -> crate::Result<()> {
+    if let Some(why) = data_dir_refusal(dir) {
+        return Err(why);
+    }
+    fs::remove_dir_all(dir).map_err(|e| format!("cannot delete {}: {e}", dir.display()))
+}

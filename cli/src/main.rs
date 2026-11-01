@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 mod corpus_cmd;
+mod corpus_edit_cmd;
 mod dedup_cmd;
 mod dense_cmd;
 mod eval_cmd;
@@ -18,13 +19,18 @@ use formslot_core::VERSION;
 const HELP: &str = "formslot: the Form family's context service
 
   setup [--yes] [--repo PATH]... [--no-path] [--dry-run]   guided first-time setup in plain language: checks this computer, puts formslot on your PATH, starts the service, indexes your projects and connects Claude Code; safe to run again; with no arguments on a terminal, `formslot` offers it
+  setup --status                    a short list of what setup put on this computer: program, PATH line, service, projects, connections, data folder
+  setup --remove [--yes] [--purge] [--dry-run]   guided undo, each step asked and skippable: disconnect projects, stop the service, remove the PATH lines, remove the program, and last (default No) the data folder; --yes never deletes the data folder, --purge with --yes does
 
   serve [--detach]   run the service on 127.0.0.1 until stopped (one per data folder); --detach starts it in the background
   start      start the service in the background if none runs, wait for it, print its port and pid
   stop       stop the running service gracefully
   status     say whether the service is running, its health, its leases and idle time
   doctor [<repo>]   check git, the data folder and modes, the service, the store, optional tools, and that hooks find formslot; exits 1 on a real problem
-  add <path> [--ref <rev>]          index a repository at a commit (HEAD)
+  add <path> [--name <name>] [--ref <rev>]   index a repository at a commit (HEAD); the corpus is named after the folder unless --name is given
+  corpus rename <old> <new>         rename a corpus in place; index, units, memory and slot copies are kept
+  corpus move <name> <new-path>     point a corpus at a moved checkout of the same repository, then run reindex
+  corpus list                       the corpora with head, path and remote
   reindex <name> [--ref <rev>]      index again; only blobs not seen before are read
   stats <name> [--json]             files, lines and bytes by language, roles, licences
   files <name> [--role R] [--language L]   list indexed paths
@@ -108,7 +114,8 @@ fn main() -> ExitCode {
         "stop" => service_cmd::stop(),
         "status" => service_cmd::status(),
         "doctor" => service_cmd::doctor(&args[1..]),
-        "add" => corpus_cmd::add(&args[1..]),
+        "add" => corpus_edit_cmd::add(&args[1..]),
+        "corpus" => corpus_edit_cmd::run(&args[1..]),
         "reindex" => corpus_cmd::reindex(&args[1..]),
         "stats" => corpus_cmd::stats(&args[1..]),
         "files" => corpus_cmd::files(&args[1..]),
