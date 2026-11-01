@@ -85,7 +85,16 @@ pub fn run(args: &[String]) -> ExitCode {
                 return fail(&format!("{} is a symbolic link; not written", file.display()));
             }
             let text = serde_json::to_string_pretty(&s.manifest).unwrap_or_default();
-            if let Err(e) = std::fs::write(&file, format!("{text}\n")) {
+            let opened = std::fs::OpenOptions::new().write(true).create_new(true).open(&file);
+            let mut out = match opened {
+                Ok(f) => f,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    eprintln!("kept {} (already there; delete it to draft it again)", file.display());
+                    continue;
+                }
+                Err(e) => return fail(&format!("cannot write {}: {e}", file.display())),
+            };
+            if let Err(e) = std::io::Write::write_all(&mut out, format!("{text}\n").as_bytes()) {
                 return fail(&format!("cannot write {}: {e}", file.display()));
             }
             written.push(file.display().to_string());

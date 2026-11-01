@@ -477,7 +477,7 @@ fn is_decoration(line: &str) -> bool {
 fn unit_doc(lines: &[&str], start: i64, language: &str) -> String {
     let at = (start - 1).max(0) as usize;
     let mut parts: Vec<String> = Vec::new();
-    let mut i = at;
+    let mut i = at.min(lines.len());
     while i > 0 {
         let line = lines[i - 1];
         if is_decoration(line) {
@@ -800,15 +800,15 @@ pub fn suggest(store: &Store, corpus_key: &str, opts: Options) -> crate::Result<
         if taken.contains(&id) {
             id = format!("{prefix}.{name}-{}", kebab(&target.name));
         }
+        if id.len() > 72 {
+            id.truncate(72);
+            id = id.trim_end_matches(['-', '.']).to_string();
+        }
         let base = id.clone();
         let mut n = 2;
         while taken.contains(&id) {
             id = format!("{base}-{n}");
             n += 1;
-        }
-        if id.len() > 80 {
-            id.truncate(80);
-            id = id.trim_end_matches(['-', '.']).to_string();
         }
         taken.insert(id.clone());
 

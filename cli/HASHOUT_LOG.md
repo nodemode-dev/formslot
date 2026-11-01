@@ -325,3 +325,5 @@ A `bin` folder alone made a folder look like formslot's, and `exists()` followed
 - logged: v0.16.0 · 2026-10-31
 
 `formslot slot suggest <corpus> [--limit N] [--min-copies K] [--json] [--write DIR]` is thin over `slots::suggest::suggest`. `main.rs` routes `slot suggest` beside `slot source`, leaving `slot_cmd.rs` unchanged. `--limit` defaults to 10 (0 means all), `--min-copies` to 2. `--write DIR` creates the folder and writes `<id>.json` per draft, refusing a symbolic link at the target; it never touches the store, so nothing is proposed. Text output gives rank, id, score, kind, title, summary, the reason line and the files; `--json` prints the report with each full manifest. Drafts that fail validation go to stderr and are not written. Exit 1 for an unknown corpus or an unwritable folder, 2 for bad arguments.
+
+`--write DIR` opens each draft with `create_new`, so a draft already in the folder (perhaps edited by the owner) is kept and named on stderr instead of overwritten; `create_new` also refuses a symbolic link left at that name (v0.16.0 review).

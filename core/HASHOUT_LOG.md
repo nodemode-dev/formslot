@@ -1323,3 +1323,11 @@ Candidates are files, not units, because a slot is a set of files and a clone gr
 - logged: v0.16.0 · 2026-11-01
 
 No code change in `core/src/dense/*` or the eval dense arm. The dense list now joins the ranking through the code-unit pre-fusion in `retrieve_with` (see core/src/search/HASHOUT_LOG.md). Embedding cost measured with the int8 model on 2 cores: subform 6,705 units in 556 s, formslot 1,651 units in 214 s (about 8 units per second; v0.11.0 reported 4 per second for formvis on a busier machine). Embedding is a single transaction chunk per 128 units, so an interrupted build resumes. Setup used the pip wheel onnxruntime 1.23.2 (libonnxruntime.so.1.23.2 copied into `<data>/dense/lib/`) and `dense fetch --yes`; the model, vectors and wheel were deleted afterwards.
+
+### core/src/slots/suggest.rs · unit_doc, suggest (review fixes)
+
+- refers-to: core/src/slots/suggest.rs :: unit_doc, suggest
+- kind: warning-context
+- logged: v0.16.0 · 2026-11-01
+
+From the turn 13 review. `unit_doc` walks up from a unit's start line; the start is now clamped to the file's line count, so a unit whose stored start lies past the last line (a different line splitter) cannot index out of range. Long ids are cut to 72 bytes before the uniqueness loop rather than after it, so two long ids can no longer truncate to the same value or to a taken one. Left as is: fragment texts are cut before the summary is redacted, so a secret straddling a cut could leave a short tail; the scanner withholds files with findings before this point.
