@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+
+missing=0
+command -v git >/dev/null || { echo "git is required: https://git-scm.com"; missing=1; }
+command -v cargo >/dev/null || { echo "Rust 1.90 or newer is required: https://rustup.rs"; missing=1; }
+[ "$missing" = "0" ] || exit 1
+
+cargo build --release --locked -p formslot-cli
+
+echo
+echo "formslot is ready to run from source. Start the service with: ./formslot serve"
+echo "Check it with: ./formslot status"
+echo "Check this computer with: ./formslot doctor"

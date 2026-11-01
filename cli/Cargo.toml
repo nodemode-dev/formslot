@@ -1,0 +1,16 @@
+[package]
+name = "formslot-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "formslot on the command line: the service, its status and the corpus commands."
+
+[[bin]]
+name = "formslot-cli"
+path = "src/main.rs"
+
+[dependencies]
+formslot-core = { path = "../core" }
+serde_json = "1"
