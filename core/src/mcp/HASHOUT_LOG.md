@@ -156,3 +156,11 @@ Descriptions say when to call a tool and what to call next (A07: tool descriptio
 - logged: v0.9.0 · 2026-10-30
 
 Thin: refuses extra arguments (exit 2), prints one line to stderr, and hands stdin and stdout to `mcp::stdio::serve`. Listed in `formslot --help` with two leading spaces and the word `mcp` first, which subform's `^\s+mcp\b` check needs to put formslot in a session's MCP config.
+
+### core/src/mcp/tools.rs · context_pack, owner_records
+
+- refers-to: core/src/mcp/tools.rs :: context_pack, owner_records; core/src/mcp/page.rs :: listing
+- kind: rationale
+- logged: v0.16.0 · 2026-11-01
+
+Found by running all nine tools in headless `claude -p` against a copy of the v0.15.0 store. (1) `slot_context_pack` returned the pack text as a content block and metadata as `structuredContent`; Claude Code hands the model only the structured part, so the model saw hits and hashes and no pack ("there is no prompt body field"). It now returns no `structuredContent`: the pack block and the summary block are the whole answer (13,289 characters, intact in the re-run). Same lesson as `slot_source`. (2) `owner_records` asked recall for the top 50 records of any kind and kept the owner ones afterwards, so a topic that hashout records match strongly (z-index, index) lost every owner rule and answered "0 records"; it now recalls kind `rule` and kind `declined` separately and merges by score (declined first on ties), so `z-index` returns 7 rules. (3) Structured results gained what only the text carried: `more` beside `next_cursor` on paged lists, `dependsOn` on `slot_get`, and the refresh note on `slot_reindex`. All nine tools were found through Claude Code's tool search and called with the right arguments on the first try; the other seven results reached the model unchanged (structured JSON, 99 to 5,000 characters; `slot_source` 15,281 characters of text).

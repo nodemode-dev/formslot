@@ -160,6 +160,9 @@ pub fn listing(plan: Listing, total: usize, render: &mut dyn FnMut(usize) -> Ite
     structured["offset"] = json!(start);
     structured["returned"] = json!(data.len());
     structured["next_cursor"] = json!(next);
+    if next.is_some() {
+        structured["more"] = json!(format!("{} more {}; call again with the same arguments and cursor set to next_cursor", total - index, plan.noun));
+    }
     structured[plan.key] = Value::Array(data);
     Ok(text_result(vec![text], Some(structured)))
 }

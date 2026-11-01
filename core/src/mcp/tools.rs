@@ -227,6 +227,7 @@ pub fn get(args: &Value) -> Result<Value, String> {
         "summary": text_of(&["summary"]),
         "version": text_of(&["version"]),
         "contentHash": text_of(&["contentHash"]),
+        "dependsOn": manifest::depends_on(slot),
         "files": slot.get("files").cloned().unwrap_or(Value::Null),
         "events": events.iter().skip(events.len().saturating_sub(shown_events)).cloned().collect::<Vec<_>>(),
     });
@@ -544,14 +545,7 @@ pub fn context_pack(args: &Value) -> Result<Value, String> {
         built.p0_sha256,
         millis
     );
-    let mut value = serde_json::to_value(&built).map_err(|e| e.to_string())?;
-    for part in ["p0", "p1", "p2"] {
-        if let Some(p) = value["parts"][part].as_object_mut() {
-            p.remove("text");
-        }
-    }
-    value["millis"] = json!(millis);
-    Ok(page::text_result(vec![built.prompt.clone(), summary], Some(value)))
+    Ok(page::text_result(vec![built.prompt.clone(), summary], None))
 }
 
 pub fn owner_records(conn: &Connection, corpus: Option<&str>, topic: &str) -> Result<(Vec<recall::Hit>, Option<String>), String> {
@@ -562,9 +556,14 @@ pub fn owner_records(conn: &Connection, corpus: Option<&str>, topic: &str) -> Re
         }
         None => None,
     };
-    let query = recall::Query { text: topic.to_string(), anchor: None, kind: None, corpus_id: corpus_id.as_ref().map(|c| c.0), limit: 50 };
-    let recalled = recall::recall(conn, &query)?;
-    let hits = recalled.hits.into_iter().filter(|h| h.authority == "owner" || h.kind == "declined").collect();
+    let mut hits: Vec<recall::Hit> = Vec::new();
+    for kind in ["rule", "declined"] {
+        let query = recall::Query { text: topic.to_string(), anchor: None, kind: Some(kind.to_string()), corpus_id: corpus_id.as_ref().map(|c| c.0), limit: 50 };
+        let recalled = recall::recall(conn, &query)?;
+        hits.extend(recalled.hits.into_iter().filter(|h| h.authority == "owner" || h.kind == "declined"));
+    }
+    hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal).then_with(|| (a.kind != "declined").cmp(&(b.kind != "declined"))).then_with(|| a.id.cmp(&b.id)));
+    hits.truncate(50);
     Ok((hits, corpus_id.map(|c| c.1)))
 }
 
@@ -697,7 +696,7 @@ pub fn reindex(args: &Value) -> Result<Value, String> {
         "Reindexed {} at {}: {} listed, {} read, {} reused, {} skipped, {} secret findings withheld, {} ms. Slot copies stay as they were until `formslot slot refresh` runs.",
         found.name, run.to, run.listed, run.read, run.reused, run.skipped, run.secrets, run.millis
     );
-    let structured = json!({ "corpus": found, "index": run });
+    let structured = json!({ "corpus": found, "index": run, "note": "Slot copies stay as they were until `formslot slot refresh` runs." });
     Ok(page::text_result(vec![text], Some(structured)))
 }
 
