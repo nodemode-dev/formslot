@@ -3,14 +3,28 @@
 <p align="center"><b>The Form family's memory for coding agents: what is already built, where it lives, and the rules it follows, served in as few tokens as the task needs.</b></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.0.1-f97316" alt="version v0.0.1" />
-  <img src="https://img.shields.io/badge/status-planning-8b5cf6" alt="status planning" />
+  <img src="https://img.shields.io/badge/version-v0.2.0-f97316" alt="version v0.2.0" />
+  <img src="https://img.shields.io/badge/status-building-8b5cf6" alt="status building" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-555555" alt="license GPL 3.0" />
 </p>
 
 formslot indexes every Form app's repository at exact commits into one deduplicated store of symbols, canonical slots (reusable components and features with their provenance and copies) and owner memory (rules, decisions, declined approaches). Agents reach it over MCP and Claude Code hooks, so they find and reuse what exists instead of re-reading or re-writing it. Its window is subform, the family's developer workbench.
 
-**Status:** planning. This repository holds its rules files only; the plan of record ships in the planning sidecar zip and waits for the owner's approval. No code exists yet.
+**Status:** building. Phases S1 and S2 have landed: the service on 127.0.0.1 with its discovery file and access checks, and indexing of git repositories at a commit (file manifest, languages, roles, licences, secret findings, incremental re-index). Symbols, dedup, slots, memory and the MCP server arrive in later phases; the plan of record ships in the planning sidecar zip. The contract clients build against is `docs/CONTRACT.md`.
+
+**Stack:** Rust (`formslot-core`, `formslot-cli`), SQLite bundled through rusqlite, the system git. Rust 1.90 or later.
+
+## Quick start
+
+```bash
+./formslot_oc_install                 # checks git and cargo, builds the release binary
+./formslot add ~/path/to/a/form/repo  # index it at HEAD
+./formslot stats <name>               # files, lines and bytes by language, roles, licences
+./formslot serve                      # the service on 127.0.0.1:5645
+./formslot status
+```
+
+The data folder is `~/.formslot` (`FORMSLOT_DATA_DIR` moves it); `FORMSLOT_PORT` moves the port, `0` picks a free one.
 
 ## Where formslot sits in the family
 
