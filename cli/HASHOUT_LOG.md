@@ -141,3 +141,27 @@ Every command prints with `println!`, which panics when the output pipe closes e
 - logged: v0.5.0 · 2026-10-30
 
 `dupes --related` prints `R <reason> <score>  path:start-end qualified  <->  path:start-end qualified`, grouped by name family (a `similar` row joins the family of whichever side has a `same_name` family, else its `a` side), families best score first with a blank line between, `same_name` rows first inside a family. Joining rows into connected components chained 15,877 formvis pairs into one blob, so families are used instead. With no `--limit` it prints every pair: the 200-line default buried the colour rows behind the `constructor` and `run` families. `--limit N` counts pairs.
+
+### cli/src/eval_cmd.rs · run
+
+- refers-to: cli/src/eval_cmd.rs :: run
+- kind: explainer
+- logged: v0.10.0 · 2026-10-30
+
+Thin shell over `formslot_core::eval`: parses flags, prints the table and gate lines (or JSON), writes the Markdown report to `--out`, creating the parent folder.
+
+### cli/src/dense_cmd.rs · run, search
+
+- refers-to: cli/src/dense_cmd.rs :: run, search
+- kind: rationale
+- logged: v0.10.0 · 2026-10-30
+
+In a build without the feature the `dense` command and `search --dense` exit 1 saying how to build it, so the flag never silently does nothing. `dense fetch` without `--yes` prints the URLs, sizes, digests, licence and target folder, downloads nothing and exits 1. Besides `pack --count remote`, no command other than `dense fetch --yes` touches the network; `dense build`, `search` and `search --dense` read only local files.
+
+### cli/src/search_cmd.rs · pack --count remote
+
+- refers-to: cli/src/search_cmd.rs :: pack
+- kind: rationale
+- logged: v0.10.0 · 2026-10-30
+
+The key is looked up before the pack is built, so a missing key fails fast with exit 1; the remote count is taken after the pack, printed beside the local figures and added as `remoteTokens` to `--json`. A failed request keeps the local estimate and says so on stderr.
