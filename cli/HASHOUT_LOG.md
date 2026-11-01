@@ -2,8 +2,8 @@
 
 Living log for `formslot-cli`. Source files stay comment-free; what they would have said lives here.
 
-Current build version: v0.4.1
-Last updated: 2026-10-30 · Phases S3 and S4, review fixes
+Current build version: v0.5.0
+Last updated: 2026-10-30 · Phase S5
 
 ## Org-navi-map
 
@@ -15,7 +15,8 @@ cli/
     main.rs         argument parsing, serve, status, doctor
     corpus_cmd.rs   add, reindex, stats, files, family
     symbols_cmd.rs  symbols, show, refs
-    dedup_cmd.rs    dupes, drift
+    dedup_cmd.rs    dupes (and --related), drift
+    slot_cmd.rs     slot list, get, seed, refresh, propose, confirm, decline, plan, apply, drift (log: core/src/slots/HASHOUT_LOG.md)
 ```
 
 ## Table of contents
@@ -132,3 +133,11 @@ Pair line format: `T2 score 1.00  path:start-end qualified  <->  path:start-end 
 - logged: v0.4.0 · 2026-10-30 · resolved v0.4.1
 
 Every command prints with `println!`, which panics when the output pipe closes early (`formslot dupes x | head`). Since v0.4.1 `quiet_on_closed_pipe` in `main.rs` installs a panic hook that exits 0 when the panic is the broken pipe and hands every other panic to the default hook; std offers no way to reset SIGPIPE without a new dependency, and one hook covers every command. Per-language files and lines for ts, py, rs, css and js equal research B06's measurements exactly; md, json and html are lower by the generated and mirrored files that are listed but not read. formMCP (96 files) and formskills (90 files) indexed in under 50 ms each. substrata v2.11.1 was refused because the upload has no `.git`.
+
+### cli/src/dedup_cmd.rs · print_related
+
+- refers-to: cli/src/dedup_cmd.rs :: print_related
+- kind: rationale
+- logged: v0.5.0 · 2026-10-30
+
+`dupes --related` prints `R <reason> <score>  path:start-end qualified  <->  path:start-end qualified`, grouped by name family (a `similar` row joins the family of whichever side has a `same_name` family, else its `a` side), families best score first with a blank line between, `same_name` rows first inside a family. Joining rows into connected components chained 15,877 formvis pairs into one blob, so families are used instead. With no `--limit` it prints every pair: the 200-line default buried the colour rows behind the `constructor` and `run` families. `--limit N` counts pairs.

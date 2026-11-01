@@ -2,8 +2,8 @@
 
 Living log for `formslot-core`. Source files stay comment-free; what they would have said lives here.
 
-Current build version: v0.4.1
-Last updated: 2026-10-30 · Phases S3 and S4, review fixes
+Current build version: v0.5.0
+Last updated: 2026-10-30 · Phase S5
 
 ## Org-navi-map
 
@@ -42,6 +42,10 @@ core/
       002_symbols.sql unit, unit_ref, unit_import, edge, blob.facts
       003_dedup.sql   unit_print, clone_group, clone_member, clone_pair
       004_facts_family.sql  blob.facts_family, the grammar family facts were read with
+      005_related.sql       related_pair, the related band
+      006_slots.sql         slot, slot_file, slot_event (log: src/slots/HASHOUT_LOG.md)
+    related.rs      the related band: similar and same_name pairs across corpora
+    slots/          slot manifests, store, refresh, copies, lockfile, consumer drift (own log: src/slots/HASHOUT_LOG.md)
 ```
 
 ## Table of contents
@@ -70,6 +74,7 @@ core/
 - migrations/003_dedup.sql
 - migrations/004_facts_family.sql
 - review fixes v0.4.1
+- related.rs and migrations/005_related.sql (v0.5.0)
 
 ## lib.rs
 
@@ -657,3 +662,45 @@ A Rust `const` is kind `constant`, as `docs/CONTRACT.md` says; `const` is kept f
 - logged: v0.4.1 · 2026-10-30
 
 `link` opens the savepoint and releases it on success, or rolls back to it and releases it on error, the same pattern as `symbols::link`; the work is `link_all`. Before, an error left the savepoint open and the clone tables half deleted, which was safe only because the caller always dropped its transaction.
+
+## related.rs and migrations/005_related.sql (v0.5.0)
+
+### core/src/related.rs · the related band
+
+- refers-to: core/src/related.rs :: link
+- kind: rationale
+- logged: v0.5.0 · 2026-10-30
+
+Code with the same purpose but different bodies, stored in `related_pair` apart from the clone tiers. Reason `similar`: estimated Jaccard from 0.40 to below 0.70 (0.70 and up belongs to T3). Reason `same_name`: the same normalised name in different files within one kind family. Both need at least `MIN_GROUP_TOKENS` (12) tokens; selector, custom_property and element_id units are left out as T3 leaves them out. A pair already in `clone_pair`, or two units with an equal normalised token hash (members of one T1 or T2 group, which dedup stores as a star, not as every pair), is never a related row. Each pair is stored once, `a` first by corpus, path and unit index; `score` is the MinHash estimate for both reasons.
+
+### core/src/related.rs · bands for similar
+
+- refers-to: core/src/related.rs :: BANDS, ROWS
+- kind: rationale
+- logged: v0.5.0 · 2026-10-30
+
+42 bands of 3 rows over the stored 128-permutation MinHash: a pair of true Jaccard s shares a band with probability 1 - (1 - s^3)^42, which is 0.94 at 0.40, 0.996 at 0.50 and 1.00 from 0.60 (the 16 x 8 clone band gives 0.01 at 0.40). Candidates are verified with the full estimate, so the wide band costs time, never a wrong row. 64 x 2 would reach 1.00 at 0.40 but makes buckets large enough that the cap drops real pairs; 32 x 4 gives 0.56. The kind family is mixed into every band key (callable for function, method and const; every other kind on its own) so buckets stay small. Units are grouped into classes of equal family and normalised hash and one signature per class is banded, as T3 does. A bucket with more than 200 classes is skipped (boilerplate shapes) and a class pair expands to at most 64 unit pairs.
+
+### core/src/related.rs · names
+
+- refers-to: core/src/related.rs :: normalise_name
+- kind: rationale
+- logged: v0.5.0 · 2026-10-30
+
+A name is the unit's own name (the last segment of the qualified one), lowercased, `_` and `-` removed, British stems turned US (colour, behaviour, centre, grey, favourite, neighbour, flavour, honour, labour, licence, analyse, catalogue and the -ise stems of initialise, normalise, serialise, optimise, organise, visualise): `colorRow`, `colourRow` and `SettingsDialog.colorRow` are all `colorrow`. A name shared by more than 50 units (`constructor`, `render`, `run`) is skipped whole. Generic names under that cap (`fill`, `refresh`, `load`, `close`) still make hundreds of pairs, which is why slot copies counts are high; a generic-name list or a minimum score is the next tuning step.
+
+### core/src/related.rs · built and the unchanged-run skip
+
+- refers-to: core/src/related.rs :: built; core/src/corpus.rs :: index
+- kind: rationale
+- logged: v0.5.0 · 2026-10-30
+
+`link` writes the meta row `related_built` when it finishes. An index run at the same head that reads nothing skips the link, so a store upgraded from v0.4.1 would never get its related rows; the skip branch therefore runs `related::link` once when the row is missing, and the skip holds again after that. The link runs inside the index transaction with the same savepoint pattern as `dedup::link` and takes about 0.5 to 1.5 s for formvis, formMCP and formskills together (16,683 units of 12 tokens or more; 29,766 rows).
+
+### core/src/related.rs · the colour-row twins
+
+- refers-to: core/src/related.rs :: link
+- kind: warning-context
+- logged: v0.5.0 · 2026-10-30
+
+Research B06 counted six colour-row twins (seven with swatchRow). Read in the source, three are functions: `colorRow` in ui/panels/controls.ts, `colourRow` in ui/panels/page-prefs.ts and `SettingsDialog.colorRow` in ui/app-dialogs.ts, and the related band pairs all three by name. The other four are not code to reuse: `colorRow` in stroke-path-dialog.ts and content-fill-dialog.ts are local constants holding a built element or a selectRow result inside a constructor, `colourRow` in artboard-dialog.ts is an uninitialised `HTMLElement` field, and `swatchRow` in filter-panel.ts is a local element. Extracting constructor locals and fields as units would add thousands of low-value units, so it was not done.

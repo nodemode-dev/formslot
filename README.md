@@ -10,7 +10,7 @@
 
 formslot indexes every Form app's repository at exact commits into one deduplicated store of symbols, canonical slots (reusable components and features with their provenance and copies) and owner memory (rules, decisions, declined approaches). Agents reach it over MCP and Claude Code hooks, so they find and reuse what exists instead of re-reading or re-writing it. Its window is subform, the family's developer workbench.
 
-**Status:** building. Phases S1 to S4 have landed: the service on 127.0.0.1 with its discovery file and access checks; indexing of git repositories at a commit (file manifest, languages, roles, licences, secret findings, incremental re-index); symbols and a per-repository graph from tree-sitter (TypeScript, Python, Rust, CSS, HTML); and duplicate detection in three tiers across repositories, with drift between two. Slots, memory and the MCP server arrive in later phases; the plan of record ships in the planning sidecar zip. The contract clients build against is `docs/CONTRACT.md`.
+**Status:** building. Phases S1 to S5 have landed: the service on 127.0.0.1 with its discovery file and access checks; indexing of git repositories at a commit (file manifest, languages, roles, licences, secret findings, incremental re-index); symbols and a per-repository graph from tree-sitter (TypeScript, Python, Rust, CSS, HTML); duplicate detection in three tiers plus a related band across repositories, with drift between two; and slots: manifests with provenance, hashes and copies, 25 proposed first-load slots in `data/slots/`, owner confirmation, and a `slots.lock.json` with per-file drift for consuming repositories. Memory and the MCP server arrive in later phases; the plan of record ships in the planning sidecar zip. The contract clients build against is `docs/CONTRACT.md`.
 
 **Stack:** Rust (`formslot-core`, `formslot-cli`), SQLite bundled through rusqlite, the system git. Rust 1.90 or later.
 
@@ -23,6 +23,11 @@ formslot indexes every Form app's repository at exact commits into one deduplica
 ./formslot symbols <name> --count     # extracted units
 ./formslot refs <name> revealApp      # who uses a symbol
 ./formslot dupes <name>               # clone groups and near duplicates
+./formslot dupes <name> --related     # same purpose, different bodies
+./formslot slot seed data/slots       # load the proposed first-load slots
+./formslot slot refresh --all --corpus <name>
+./formslot slot get ui.control-rows   # manifest, files, copies, events
+./formslot slot drift --repo <path> --infer   # vendored copies against their slots
 ./formslot dupes --across <a> <b>     # code shared between two repositories
 ./formslot serve                      # the service on 127.0.0.1:5645
 ./formslot status
