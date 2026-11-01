@@ -72,7 +72,22 @@ pub fn render(lock: &Lock) -> crate::Result<String> {
 pub fn write(repo: &Path, lock: &Lock) -> crate::Result<PathBuf> {
     let path = path_in(repo);
     let temp = repo.join(format!("{FILE_NAME}.tmp"));
-    std::fs::write(&temp, render(lock)?).map_err(|e| format!("cannot write {}: {e}", temp.display()))?;
+    if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(format!("refused: {} is a symbolic link", path.display()));
+    }
+    if std::fs::symlink_metadata(&temp).is_ok() {
+        std::fs::remove_file(&temp).map_err(|e| format!("cannot remove {}: {e}", temp.display()))?;
+    }
+    {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .map_err(|e| format!("cannot write {}: {e}", temp.display()))?;
+        file.write_all(render(lock)?.as_bytes())
+            .map_err(|e| format!("cannot write {}: {e}", temp.display()))?;
+    }
     std::fs::rename(&temp, &path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
         format!("cannot write {}: {e}", path.display())

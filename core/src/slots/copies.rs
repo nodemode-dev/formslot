@@ -165,6 +165,9 @@ pub fn derive(conn: &Connection, origin: i64, paths: &[String]) -> crate::Result
             .then(names.get(&a.corpus).cmp(&names.get(&b.corpus)))
             .then(a.path.cmp(&b.path))
             .then(a.start.cmp(&b.start))
+            .then(a.qualified.cmp(&b.qualified))
+            .then(a.end.cmp(&b.end))
+            .then(a.relation.cmp(&b.relation))
     });
     Ok(list
         .into_iter()

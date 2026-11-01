@@ -147,6 +147,10 @@ fn hash_in(repo: &Path, rel: &str) -> Option<(String, i64)> {
     if !meta.file_type().is_file() {
         return None;
     }
+    let base = std::fs::canonicalize(repo).ok()?;
+    if !std::fs::canonicalize(&path).ok()?.starts_with(&base) {
+        return None;
+    }
     let data = std::fs::read(&path).ok()?;
     Some(manifest::hash_text(&data))
 }
@@ -312,10 +316,19 @@ pub fn apply(
         let previous = lock.slots.iter().position(|s| s.id == slot.id);
         let pinned = previous.map(|i| lock.slots[i].pinned).unwrap_or(false);
         if pinned {
-            notes.push(format!("{} is pinned in the lockfile; its entry is refreshed, not moved to a new version", slot.id));
+            notes.push(format!("{} is pinned in the lockfile; its entry is left as it is", slot.id));
+            continue;
         }
+        if previous.is_some() && !ids.contains(&slot.id) {
+            continue;
+        }
+        let kept: Vec<LockFile> = previous.map(|i| lock.slots[i].files.clone()).unwrap_or_default();
         let mut files = Vec::new();
         for file in &slot.files {
+            if let Some(old) = kept.iter().find(|f| f.path == file.target && f.origin_sha256 == file.origin_sha256 && !f.origin_sha256.is_empty()) {
+                files.push(old.clone());
+                continue;
+            }
             let origin_sha = if !file.exists || file.installed_sha256 == file.origin_sha256 {
                 file.origin_sha256.clone()
             } else {

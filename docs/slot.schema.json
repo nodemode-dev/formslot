@@ -83,14 +83,14 @@
           "path": { "type": "string", "minLength": 1 },
           "role": { "enum": ["source", "style", "test", "asset", "doc", "example"] },
           "target": { "type": "string" },
-          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "sha256": { "type": "string", "pattern": "^([0-9a-f]{64})?$" },
           "lines": { "type": "integer", "minimum": 0 },
           "port": { "enum": ["verbatim", "adapt", "rename-strings-only"] },
           "renameables": { "type": "array", "items": { "type": "string" } }
         }
       }
     },
-    "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "contentHash": { "type": "string", "pattern": "^([0-9a-f]{64})?$" },
     "dependsOn": {
       "type": "object",
       "properties": {
