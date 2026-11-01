@@ -1,0 +1,55 @@
+{
+  "description": "formslot: map digest at session start, matches per prompt, reuse and declined-feature check before writes, async reindex, rule re-injection for subagents, duplicate audit at stop.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "formslot hook SessionStart", "timeout": 15 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "formslot hook UserPromptSubmit", "timeout": 10 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "formslot check",
+            "timeout": 5,
+            "statusMessage": "formslot: checking for existing code"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "formslot hook PostToolUse", "timeout": 10, "async": true }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "formslot hook SubagentStart", "timeout": 10 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "formslot hook Stop", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}

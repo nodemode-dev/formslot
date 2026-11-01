@@ -1,6 +1,7 @@
 pub type Result<T> = std::result::Result<T, String>;
 
 pub mod api;
+pub mod check;
 pub mod config;
 pub mod corpus;
 pub mod dedup;
@@ -8,8 +9,11 @@ pub mod discovery;
 pub mod facts;
 pub mod family;
 pub mod git;
+pub mod hook;
 pub mod http;
 pub mod hygiene;
+pub mod install;
+pub mod jsonedit;
 pub mod licence;
 pub mod log;
 pub mod mcp;
