@@ -1,6 +1,6 @@
 # Seeded slots
 
-The 25 first-load manifests in this folder. All are status proposed, version 0.1.0, origin formvis 1.98.4 at commit 8fe4ce45bcfa1b85c509db4bb34da29942db964a.
+The 26 first-load manifests in this folder. All are status proposed, version 0.1.0, origin formvis 1.98.4 at commit 8fe4ce45bcfa1b85c509db4bb34da29942db964a.
 
 | id | title | kind | status | B06 row | one line |
 | --- | --- | --- | --- | --- | --- |
@@ -19,6 +19,7 @@ The 25 first-load manifests in this folder. All are status proposed, version 0.1
 | ui.number-fields | Number fields and sticky modifiers | component | proposed | 14 | Arithmetic and scrub on every number input; sticky modifier keys |
 | ui.panel-group-dock | Panel groups, dock and tab strip | component | proposed | 15 | PanelGroup, Dock (reorder, float, remember) and the document tab strip |
 | ui.prefs-store | Preferences store and option memory | module | proposed | 19 | Validated localStorage preferences, per-dialog memory and tool option memory |
+| ui.prefs-dialog | Preferences dialog shell | component | proposed | S7 | SettingsDialog: rail of section tabs, foldable cards, scroll spy; add a section by registering a name and rows |
 | ui.terminal-dock | Terminal dock | component | proposed | 21 | Bottom dock of PTY terminals with Claude Code tabs, plus engine terminal service |
 | ui.chat-pane | Chat pane (Claude Code stream) | component | proposed | 22 | Dock Chat tab streaming Claude Code with permission cards |
 | svc.claude-code-agents | Claude Code launch and Agent Connect | service | proposed | 23 | Claude Code launch, Agent Connect policies and approvals, skills sync with drift check |

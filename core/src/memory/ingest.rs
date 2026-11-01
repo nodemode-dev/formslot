@@ -283,6 +283,18 @@ fn stale_by_source(conn: &Connection, id: i64) -> crate::Result<bool> {
     Ok(matches!(latest, Some((action, note)) if action == "stale" && !note.starts_with("anchor ")))
 }
 
+fn stale_by_anchor(conn: &Connection, id: i64) -> crate::Result<bool> {
+    let latest: Option<(String, String)> = conn
+        .query_row(
+            "SELECT action, note FROM memory_event WHERE record_id = ?1 ORDER BY id DESC LIMIT 1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(sql)?;
+    Ok(matches!(latest, Some((action, note)) if action == "stale" && note.starts_with("anchor ")))
+}
+
 fn source_path(source: &str) -> &str {
     source.rsplit_once(':').map(|(p, _)| p).unwrap_or(source)
 }
@@ -423,7 +435,16 @@ fn reconcile(conn: &Connection, corpus_id: i64, items: Vec<Item>, now: &str) -> 
             }
         }
         for (i, old) in olds.iter().enumerate() {
-            if taken.contains(&i) || old.status != "active" {
+            if taken.contains(&i) {
+                continue;
+            }
+            if old.status == "stale" {
+                if stale_by_anchor(conn, old.id)? {
+                    event(conn, old.id, "stale", ACTOR, &format!("the source line {} is no longer in the corpus", old.source))?;
+                }
+                continue;
+            }
+            if old.status != "active" {
                 continue;
             }
             conn.execute(
@@ -438,7 +459,7 @@ fn reconcile(conn: &Connection, corpus_id: i64, items: Vec<Item>, now: &str) -> 
     Ok(tally)
 }
 
-fn gather(conn: &Connection, repo: &Repo, corpus_id: i64, units: &Units) -> crate::Result<(Vec<Item>, usize)> {
+fn load_texts(conn: &Connection, repo: &Repo, corpus_id: i64) -> crate::Result<Vec<(Class, String, String)>> {
     let mut files: Vec<(Class, String, String)> = Vec::new();
     {
         let mut stmt = conn
@@ -463,6 +484,38 @@ fn gather(conn: &Connection, repo: &Repo, corpus_id: i64, units: &Units) -> crat
             texts.push((class, path, String::from_utf8_lossy(&bytes).to_string()));
         }
     }
+    Ok(texts)
+}
+
+fn decline_files(texts: &[(Class, String, String)]) -> Vec<(String, String)> {
+    let mut scan: Vec<(u8, String, String)> = texts
+        .iter()
+        .filter(|(class, _, _)| rank(*class) < 5)
+        .map(|(class, path, text)| (rank(*class), path.clone(), text.clone()))
+        .collect();
+    scan.sort_by(|a, b| (a.0, a.1.matches('/').count(), &a.1).cmp(&(b.0, b.1.matches('/').count(), &b.1)));
+    scan.into_iter().map(|(_, p, t)| (p, t)).collect()
+}
+
+pub fn check_declines(store: &Store, key: &str) -> crate::Result<(String, Vec<declines::Check>)> {
+    let (corpus_id, name) = super::corpus_of(store.conn(), key)?;
+    let (path, head): (String, Option<String>) = store
+        .conn()
+        .query_row("SELECT path, head FROM corpus WHERE id = ?1", params![corpus_id], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .map_err(sql)?;
+    if head.is_none() {
+        return Err(format!("corpus {key} has no indexed commit yet"));
+    }
+    let repo = Repo::open(Path::new(&path))?;
+    let texts = load_texts(store.conn(), &repo, corpus_id)?;
+    let checks = declines::check(&decline_files(&texts), &name)?;
+    Ok((name, checks))
+}
+
+fn gather(conn: &Connection, repo: &Repo, corpus_id: i64, units: &Units) -> crate::Result<(Vec<Item>, usize)> {
+    let texts = load_texts(conn, repo, corpus_id)?;
     let laws = Regex::new(r"(?i)\blaws?\b").expect("laws pattern");
     let notice = Regex::new(r"(?i)keeping|convention|current|trademark").expect("notice pattern");
     let mut items: Vec<Item> = Vec::new();
@@ -477,14 +530,8 @@ fn gather(conn: &Connection, repo: &Repo, corpus_id: i64, units: &Units) -> crat
             Class::Changelog => {}
         }
     }
-    let mut scan: Vec<(u8, String, String)> = texts
-        .iter()
-        .filter(|(class, _, _)| rank(*class) < 5)
-        .map(|(class, path, text)| (rank(*class), path.clone(), text.clone()))
-        .collect();
-    scan.sort_by(|a, b| (a.0, a.1.matches('/').count(), &a.1).cmp(&(b.0, b.1.matches('/').count(), &b.1)));
-    let ordered: Vec<(String, String)> = scan.into_iter().map(|(_, p, t)| (p, t)).collect();
-    for hit in declines::scan(&ordered) {
+    let ordered = decline_files(&texts);
+    for hit in declines::scan(&ordered)? {
         items.push(Item {
             kind: "declined",
             authority: "owner",
@@ -514,15 +561,8 @@ pub fn ingest_with(conn: &Connection, repo: &Repo, corpus_id: i64) -> crate::Res
         let (items, sources) = gather(conn, repo, corpus_id, &units)?;
         let total = items.len();
         let now = crate::corpus::now_iso();
-        let first = check_anchors(conn, corpus_id)?;
         let tally = reconcile(conn, corpus_id, items, &now)?;
-        let second = check_anchors(conn, corpus_id)?;
-        let anchors = AnchorCheck {
-            checked: second.checked,
-            anchored: first.anchored + second.anchored,
-            stale: first.stale + second.stale,
-            restored: first.restored + second.restored,
-        };
+        let anchors = check_anchors(conn, corpus_id)?;
         Ok(IngestReport {
             corpus: name.clone(),
             commit: head.clone().unwrap_or_default(),

@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 use serde::Serialize;
 
 use super::markdown::clip_words;
@@ -10,6 +10,7 @@ const MAX_TEXT: usize = 8000;
 #[derive(Debug, Clone, Serialize)]
 pub struct Proposal {
     pub id: i64,
+    pub created: bool,
     pub action: String,
     pub target: Option<i64>,
     pub target_kind: Option<String>,
@@ -102,28 +103,47 @@ pub fn propose(
         target.map(|r| r.status.clone()),
     );
     let now = crate::corpus::now_iso();
-    let record = NewRecord {
-        kind: kind.to_string(),
-        authority: "agent".to_string(),
-        status: "proposed".to_string(),
-        title: clip_words(&text, 12, 90),
-        text,
-        anchor: anchor.map(str::to_string),
-        corpus_id,
-        source: "proposal".to_string(),
-        triggers: String::new(),
-        valid_from: now.clone(),
-    };
-    let id = insert(conn, &record, &now)?;
     let label = match target_id {
         Some(t) => format!("{action} target={t}: {note}"),
         None => format!("{action}: {note}"),
     };
-    event(conn, id, "proposed", "agent", &label)?;
-    conn.execute("UPDATE memory_record SET updated_at = ?1 WHERE id = ?2", params![now, id])
-        .map_err(sql)?;
+    conn.execute_batch("SAVEPOINT memory_propose").map_err(sql)?;
+    let written = (|| -> crate::Result<(i64, bool)> {
+        if action == "NOOP"
+            && let Some(existing) = target_id
+        {
+            event(conn, existing, "proposed", "agent", &format!("{label}; no new record was added"))?;
+            return Ok((existing, false));
+        }
+        let record = NewRecord {
+            kind: kind.to_string(),
+            authority: "agent".to_string(),
+            status: "proposed".to_string(),
+            title: clip_words(&text, 12, 90),
+            text: text.clone(),
+            anchor: anchor.map(str::to_string),
+            corpus_id,
+            source: "proposal".to_string(),
+            triggers: String::new(),
+            valid_from: now.clone(),
+        };
+        let id = insert(conn, &record, &now)?;
+        event(conn, id, "proposed", "agent", &label)?;
+        Ok((id, true))
+    })();
+    let (id, created) = match written {
+        Ok(pair) => {
+            conn.execute_batch("RELEASE memory_propose").map_err(sql)?;
+            pair
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK TO memory_propose; RELEASE memory_propose");
+            return Err(e);
+        }
+    };
     Ok(Proposal {
         id,
+        created,
         action: action.to_string(),
         target: target_id,
         target_kind: facts.0,

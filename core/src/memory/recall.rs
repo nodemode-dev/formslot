@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -8,6 +8,7 @@ use super::{Filter, Record, estimate_tokens, list, sql, words};
 pub const ANCHOR_BUDGET: usize = 2000;
 const RESERVE_CHARS: usize = 220;
 const FLOOR: usize = 200;
+const MIN_TERM: usize = 2;
 const RECALL_LIMIT_MAX: usize = 50;
 const STOP: [&str; 20] = [
     "the", "a", "an", "of", "to", "for", "and", "or", "in", "on", "is", "it", "with", "at", "by", "how", "do", "i",
@@ -65,29 +66,37 @@ fn kind_order(kind: &str) -> u8 {
 }
 
 fn score_of(record: &Record, terms: &[String], joined: &str) -> f64 {
-    let title = record.title.to_lowercase();
-    let text = record.text.to_lowercase();
-    let triggers = record.triggers.to_lowercase();
-    let anchor = record.anchor.clone().unwrap_or_default().to_lowercase();
+    let title_words = words(&record.title);
+    let text_words = words(&record.text);
+    let title_set: HashSet<&str> = title_words.iter().map(String::as_str).collect();
+    let trigger_words = words(&record.triggers);
+    let trigger_set: HashSet<&str> = trigger_words.iter().map(String::as_str).collect();
+    let anchor_words = words(record.anchor.as_deref().unwrap_or(""));
+    let anchor_set: HashSet<&str> = anchor_words.iter().map(String::as_str).collect();
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for w in &text_words {
+        *counts.entry(w.as_str()).or_insert(0) += 1;
+    }
     let mut score = 0.0;
     for term in terms {
-        if title.contains(term.as_str()) {
+        let term = term.as_str();
+        if title_set.contains(term) {
             score += 3.0;
         }
-        if !triggers.is_empty() && triggers.contains(term.as_str()) {
+        if trigger_set.contains(term) {
             score += 3.0;
         }
-        if !anchor.is_empty() && anchor.contains(term.as_str()) {
+        if anchor_set.contains(term) {
             score += 2.0;
         }
-        score += text.matches(term.as_str()).count().min(5) as f64;
+        score += counts.get(term).copied().unwrap_or(0).min(5) as f64;
     }
     if terms.len() > 1 {
-        let phrase = terms.join(" ");
-        if text.contains(&phrase) {
+        let phrase = format!(" {} ", terms.join(" "));
+        if format!(" {} ", text_words.join(" ")).contains(&phrase) {
             score += 4.0;
         }
-        if title.contains(&phrase) {
+        if format!(" {} ", title_words.join(" ")).contains(&phrase) {
             score += 6.0;
         }
     }
@@ -179,10 +188,8 @@ pub fn recall(conn: &Connection, query: &Query) -> crate::Result<Recalled> {
     let records = list(conn, &filter)?;
     let names = corpus_names(conn)?;
     let all = words(&query.text);
-    let mut terms: Vec<String> = all.iter().filter(|w| !STOP.contains(&w.as_str())).cloned().collect();
-    if terms.is_empty() {
-        terms = all.clone();
-    }
+    let long: Vec<String> = all.iter().filter(|w| w.chars().count() >= MIN_TERM).cloned().collect();
+    let terms: Vec<String> = long.iter().filter(|w| !STOP.contains(&w.as_str())).cloned().collect();
     let joined = all.join(" ");
     let mut scored: Vec<(f64, Record)> = Vec::new();
     for record in records {
@@ -191,6 +198,8 @@ pub fn recall(conn: &Connection, query: &Query) -> crate::Result<Recalled> {
         }
         let score = if query.text.trim().is_empty() {
             1.0
+        } else if terms.is_empty() {
+            0.0
         } else {
             score_of(&record, &terms, &joined)
         };

@@ -1,10 +1,18 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 use regex::Regex;
 
 use super::markdown;
 
 pub const MAX_ANCHORS: usize = 16;
+
+static FILE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"[A-Za-z0-9_./\-\[\]]+\.(?:ts|tsx|js|mjs|py|rs|css|html|json|toml|md|sql|wgsl|sh|yaml|yml)\b")
+        .expect("file pattern")
+});
+static IDENT_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z_][A-Za-z0-9_]*").expect("identifier pattern"));
+static SPAN_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`([^`\n]{1,60})`").expect("span pattern"));
 
 #[derive(Default)]
 pub struct Units {
@@ -75,12 +83,8 @@ fn targets(rest: &str) -> Vec<String> {
 }
 
 fn file_tokens(scope: &str) -> Vec<String> {
-    let pattern = Regex::new(
-        r"[A-Za-z0-9_./\-\[\]]+\.(?:ts|tsx|js|mjs|py|rs|css|html|json|toml|md|sql|wgsl|sh|yaml|yml)\b",
-    )
-    .expect("file pattern");
     let mut out: Vec<String> = Vec::new();
-    for found in pattern.find_iter(scope) {
+    for found in FILE_PATTERN.find_iter(scope) {
         let token = found.as_str().trim_start_matches("./").to_string();
         if !out.contains(&token) {
             out.push(token);
@@ -142,8 +146,8 @@ fn resolve(token: &str, log_dir: &str, previous: Option<&str>, units: &Units) ->
 }
 
 fn candidate_names(title: &str, body: &str) -> Vec<String> {
-    let ident = Regex::new(r"[A-Za-z_][A-Za-z0-9_]*").expect("identifier pattern");
-    let span = Regex::new(r"`([^`\n]{1,60})`").expect("span pattern");
+    let ident = &*IDENT_PATTERN;
+    let span = &*SPAN_PATTERN;
     let mut out: Vec<String> = Vec::new();
     let mut add = |name: &str| {
         if name.len() >= 3 && !out.iter().any(|n| n == name) {
@@ -204,13 +208,16 @@ fn legacy_anchors(title: &str, level: usize, body: &str, log_dir: &str, units: &
         return Vec::new();
     }
     let names = candidate_names(title, body);
+    let normal_names: Vec<String> = names.iter().map(|n| normal_symbol(n)).collect();
     let mut hits: Vec<(usize, String)> = Vec::new();
     for path in &files {
         let Some(list) = units.units.get(path) else { continue };
         for (qualified, name) in list {
+            let wanted = normal_symbol(qualified);
             let rank = names
                 .iter()
-                .position(|n| n == name || normal_symbol(n) == normal_symbol(qualified));
+                .zip(&normal_names)
+                .position(|(n, normal)| n == name || *normal == wanted);
             if let Some(rank) = rank {
                 let anchor = format!("{path}#{qualified}");
                 if !hits.iter().any(|(_, a)| a == &anchor) {

@@ -43,6 +43,7 @@ const HELP: &str = "formslot: the Form family's context service
   slot drift --repo <path> [--infer] [--check] [--json]   clean, local, behind, diverged, missing
   memory ingest <corpus>            read rules, declines, HASHOUT entries and decisions into memory records
   memory list [--kind K] [--status S] [--corpus C] [--limit N] [--count] [--json]   the records
+  memory declines [--check <corpus>] [--json]   the decline specs; --check fails (exit 1) when one no longer finds its owner line
   recall <query> [--anchor path#symbol] [--kind K] [--corpus C] [--limit N] [--json]   ranked records, with a token estimate
   remember --propose <text> [--anchor path#symbol] [--kind decision|how-to]   store a proposal and print NOOP, MERGE, SUPERSEDE or ADD
   search <query> [--corpus C] [--limit N] [--json]   ranked units, slots and memory records

@@ -6,7 +6,7 @@ use formslot_core::memory::{self, Filter, KINDS, STATUSES, propose, recall};
 use formslot_core::store::Store;
 use serde_json::{Value, json};
 
-const VALUED: [&str; 7] = ["--kind", "--status", "--corpus", "--limit", "--anchor", "--propose", "--format"];
+const VALUED: [&str; 8] = ["--kind", "--status", "--corpus", "--limit", "--anchor", "--propose", "--format", "--check"];
 
 fn option(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
@@ -137,7 +137,8 @@ pub fn run(args: &[String]) -> ExitCode {
     match sub {
         "ingest" => ingest(&args[1..]),
         "list" => list(&args[1..]),
-        _ => usage("memory ingest <corpus> [--json] | memory list [--kind K] [--status S] [--corpus C] [--limit N] [--count] [--json]"),
+        "declines" => declines(&args[1..]),
+        _ => usage("memory ingest <corpus> [--json] | memory list [--kind K] [--status S] [--corpus C] [--limit N] [--count] [--json] | memory declines [--check <corpus>] [--json]"),
     }
 }
 
@@ -172,6 +173,69 @@ fn ingest(args: &[String]) -> ExitCode {
     );
     println!("records of {}:", report.corpus);
     print_counts(&report.counts);
+    ExitCode::SUCCESS
+}
+
+fn declines(args: &[String]) -> ExitCode {
+    if let Some(problem) = missing_value(args) {
+        return fail(&problem);
+    }
+    let json_out = flag(args, "--json");
+    let origin = memory::declines::source();
+    let Some(corpus) = option(args, "--check") else {
+        let specs = match memory::declines::specs() {
+            Ok(specs) => specs,
+            Err(e) => return fail(&e),
+        };
+        if json_out {
+            println!("{}", pretty(&json!({"source": origin, "specs": specs})));
+            return ExitCode::SUCCESS;
+        }
+        println!("declines from {origin}: {} specs", specs.len());
+        for spec in &specs {
+            let hint = if spec.corpus.is_empty() { "-" } else { spec.corpus.as_str() };
+            println!("  {:<8} {}", hint, clip(&spec.title, 90));
+        }
+        return ExitCode::SUCCESS;
+    };
+    let store = match open() {
+        Ok(store) => store,
+        Err(e) => return fail(&e),
+    };
+    let (name, checks) = match memory::ingest::check_declines(&store, &corpus) {
+        Ok(pair) => pair,
+        Err(e) => return fail(&e),
+    };
+    let state = |c: &memory::declines::Check| -> &'static str {
+        match (c.path.is_some(), c.expected) {
+            (true, _) => "ok",
+            (false, true) => "FAIL",
+            (false, false) => "skip",
+        }
+    };
+    let failed = checks.iter().filter(|c| state(c) == "FAIL").count();
+    if json_out {
+        let rows: Vec<Value> = checks
+            .iter()
+            .map(|c| json!({"state": state(c), "title": c.title, "corpus": c.corpus, "path": c.path, "line": c.line}))
+            .collect();
+        println!("{}", pretty(&json!({"corpus": name, "source": origin, "failed": failed, "specs": rows})));
+    } else {
+        println!("declines check {name} (specs from {origin})");
+        for c in &checks {
+            let place = match (&c.path, c.line) {
+                (Some(path), Some(line)) => format!("{path}:{line}"),
+                _ if c.expected => format!("no line in {name} holds the match phrases"),
+                _ => format!("belongs to {}", c.corpus),
+            };
+            println!("  {:<5} {}  {}", state(c), clip(&c.title, 70), place);
+        }
+        let ok = checks.iter().filter(|c| state(c) == "ok").count();
+        println!("{} specs: {ok} found, {} skipped, {failed} failed", checks.len(), checks.len() - ok - failed);
+    }
+    if failed > 0 {
+        return ExitCode::from(1);
+    }
     ExitCode::SUCCESS
 }
 
@@ -332,7 +396,11 @@ pub fn remember(args: &[String]) -> ExitCode {
         println!("{}", pretty(&json!(proposal)));
         return ExitCode::SUCCESS;
     }
-    println!("proposed record {} (status proposed, authority agent, kind {kind})", proposal.id);
+    if proposal.created {
+        println!("proposed record {} (status proposed, authority agent, kind {kind})", proposal.id);
+    } else {
+        println!("no new record: record {} already holds this text; a proposal event was added to it", proposal.id);
+    }
     match proposal.target {
         Some(t) => println!("proposed action: {} record {t}", proposal.action),
         None => println!("proposed action: {}", proposal.action),

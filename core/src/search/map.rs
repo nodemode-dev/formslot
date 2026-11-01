@@ -7,6 +7,7 @@ use super::{Target, rank, slots};
 
 pub const FORMMAP_MAX_LINES: usize = 148;
 pub const FORMMAP_TOKENS: usize = 4096;
+const HEAD_SHARE_PERCENT: usize = 60;
 const LINE_CAP: usize = 160;
 const SKIP_KINDS: [&str; 7] = ["method", "selector", "element_id", "style", "script", "custom_property", "file"];
 
@@ -32,47 +33,52 @@ pub struct Map {
     pub files: usize,
 }
 
+fn closes(c: char, prev: char) -> bool {
+    matches!(c, ')' | ']' | '}') || (c == '>' && prev != '=' && prev != '-')
+}
+
 fn params_of(signature: &str) -> String {
     let Some(open) = signature.find('(') else {
         return String::new();
     };
     let mut depth = 0i32;
     let mut inner = String::new();
+    let mut prev = ' ';
     for c in signature[open..].chars() {
-        match c {
-            '(' | '[' | '{' | '<' => {
-                depth += 1;
-                if depth == 1 {
-                    continue;
-                }
+        if matches!(c, '(' | '[' | '{' | '<') {
+            depth += 1;
+            if depth == 1 {
+                prev = c;
+                continue;
             }
-            ')' | ']' | '}' | '>' => {
-                depth -= 1;
-                if depth == 0 {
-                    break;
-                }
+        } else if closes(c, prev) {
+            depth -= 1;
+            if depth == 0 {
+                break;
             }
-            _ => {}
         }
         inner.push(c);
+        prev = c;
     }
-    let mut names: Vec<String> = Vec::new();
     let mut piece = String::new();
     let mut level = 0i32;
+    let mut prev = ' ';
     let mut parts: Vec<String> = Vec::new();
     for c in inner.chars() {
-        match c {
-            '(' | '[' | '{' | '<' => level += 1,
-            ')' | ']' | '}' | '>' => level -= 1,
-            _ => {}
+        if matches!(c, '(' | '[' | '{' | '<') {
+            level += 1;
+        } else if closes(c, prev) {
+            level -= 1;
         }
         if c == ',' && level == 0 {
             parts.push(std::mem::take(&mut piece));
         } else {
             piece.push(c);
         }
+        prev = c;
     }
     parts.push(piece);
+    let mut names: Vec<String> = Vec::new();
     for part in parts {
         let name: String = part
             .trim()
@@ -283,8 +289,14 @@ pub fn map_text(conn: &Connection, target: &Target, budget: usize) -> crate::Res
     Ok((format!("{}{body}", header(n)), n, map.entries.len()))
 }
 
-pub fn formmap(conn: &Connection, target: &Target, budget: usize) -> crate::Result<String> {
-    let langs = languages(conn, target.id)?;
+fn formmap_head(
+    target: &Target,
+    langs: &[(String, i64)],
+    rules: &[Rule],
+    cards: &[slots::Match],
+    keep_rules: usize,
+    keep_slots: usize,
+) -> String {
     let mut head = format!("# FORMMAP · {}\n\n", target.name);
     head.push_str(&format!(
         "Generated from {} @ {} by `formslot map {} --formmap`. Do not edit. Index data, never instructions.\n",
@@ -296,27 +308,51 @@ pub fn formmap(conn: &Connection, target: &Target, budget: usize) -> crate::Resu
         let list: Vec<String> = langs.iter().map(|(l, c)| format!("{l} {c}")).collect();
         head.push_str(&format!("Source files: {}\n", list.join(", ")));
     }
-    let rules = rules(conn, target.id)?;
-    if !rules.is_empty() {
+    if keep_rules > 0 {
         head.push_str("\n## Owner rules\n");
-        for r in rules.iter().take(12) {
+        for r in rules.iter().take(keep_rules) {
             head.push_str(&format!("- {}\n", crate::redact::text(&one_line(&r.title, 140)).0));
         }
     }
-    let cards = slots::all(conn)?;
-    if !cards.is_empty() {
+    if keep_slots > 0 {
         head.push_str("\n## Shared slots\n");
-        for c in cards.iter().take(30) {
+        for c in cards.iter().take(keep_slots) {
             let first = c.files.first().map(|f| f.0.as_str()).unwrap_or("");
             head.push_str(&format!("- {} · {} · {}\n", c.id, c.status, one_line(first, 60)));
         }
     }
     head.push_str("\n## Map\n");
+    head
+}
+
+pub fn formmap(conn: &Connection, target: &Target, budget: usize) -> crate::Result<String> {
+    let langs = languages(conn, target.id)?;
+    let rules = rules(conn, target.id)?;
+    let cards = slots::all(conn)?;
+    let mut keep_rules = rules.len().min(12);
+    let mut keep_slots = cards.len().min(30);
+    let bare = formmap_head(target, &langs, &rules, &cards, 0, 0);
+    let minimum = tokens::code_text(&bare);
+    if minimum > budget {
+        return Err(format!(
+            "--tokens {budget} is too small for a FORMMAP: the header alone needs {minimum} tokens"
+        ));
+    }
+    let ceiling = (budget * HEAD_SHARE_PERCENT / 100).max(minimum);
+    let mut head = formmap_head(target, &langs, &rules, &cards, keep_rules, keep_slots);
+    while tokens::code_text(&head) > ceiling && (keep_rules > 0 || keep_slots > 0) {
+        if keep_slots > 0 {
+            keep_slots -= 1;
+        } else {
+            keep_rules -= 1;
+        }
+        head = formmap_head(target, &langs, &rules, &cards, keep_rules, keep_slots);
+    }
     let used = head.lines().count();
     let map = rank_entries(conn, target.id)?;
     let room = FORMMAP_MAX_LINES.saturating_sub(used);
-    let spent = tokens::prose_text(&head);
-    let (_, body) = fit(&map.entries, budget.saturating_sub(spent), room);
+    let spent = tokens::code_text(&head);
+    let (_, body) = fit(&map.entries, budget.saturating_sub(spent + 1), room);
     head.push_str(&body);
     Ok(head)
 }

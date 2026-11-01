@@ -1,0 +1,190 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.prefs-dialog",
+  "title": "Preferences dialog shell",
+  "summary": "SettingsDialog: a modal Preferences dialog with a collapsible left rail of section tabs, one scrolling pane of foldable section cards, a scroll spy and a wire from the active tab. Add a section by registering a name, an icon and groups of rows.",
+  "description": "`SettingsDialog extends Dialog` (frontend/src/ui/app-dialogs.ts) is built once at start, appended to #overlay-root, and shown and hidden, never rebuilt. The constructor defines four closures: `grp(label, ...rows)` makes a titled group card (`section.cv-prefs-group` with `h3.cv-prefs-label`, relabelled on language change), `nt(text)` a note, `cols(...rows)` a responsive grid of rows, and `add(name, ...groups)` registers a section: it builds the rail tab (`button.cv-prefs-railtab`, icon from the `railIcons` map, English name in `data-section`) and the pane card (`section.cv-prefs-page.cv-prefs-sec` with a head button that folds the body), and stores the card in `this.sections`. After all `add` calls a loop re-appends tabs and cards in one fixed order; the `add` call order must equal the display order because the scroll spy treats the last key as the last card. `show(section?, live?)` re-reads the preferences, sets every pre-built row, refreshes async parts, opens the shell and scrolls to the section. `showSection`, `markSection`, `scrollToSection`, `foldSection`, `queueSpy`, `queueWire` and `drawWire` keep rail, pane and the SVG wire in step. `change(patch)` merges a patch into the preferences without overwriting what tool options and dialogs remembered meanwhile, saves, and calls `onPrefs`. Rows come from the control-row builders and from panels/page-prefs.ts (`PagePrefsRows`), built once and patched in place so nothing flashes. The rail collapse is remembered in localStorage (formvis.prefsRailCollapsed) inside try/catch. The stylesheet block is the `cv-prefs-*` selectors in frontend/src/styles/dialogs.css (the dialog frame, rail, tabs, wire, port, cards, groups, notes, the column grid and the row overrides inside the dialog). A port keeps the shell and replaces the section list and the rows; the formvis engine, GPU, generative and plug-in rows are formvis-specific.",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "preferences",
+    "settings",
+    "dialog",
+    "section",
+    "add a section",
+    "rail",
+    "tabs",
+    "scroll-spy",
+    "foldable cards",
+    "settings dialog"
+  ],
+  "status": "proposed",
+  "statusReason": "proposed for the owner to confirm; the S7 exit slot for the Preferences dialog shell",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/app-dialogs.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/app-dialogs.ts",
+        "symbol": "SettingsDialog",
+        "signature": "export class SettingsDialog extends Dialog { constructor(onPrefs: (p: Prefs) => void) }",
+        "doc": "Edit > Preferences (Ctrl+,): sections on the left, each section's settings on the right, kept on this device. onPrefs puts a change into effect."
+      },
+      {
+        "file": "frontend/src/ui/app-dialogs.ts",
+        "symbol": "SettingsDialog.show",
+        "signature": "show(section?: string, live = false): void",
+        "doc": "Re-reads the preferences, sets every row, opens the dialog and scrolls to the section; live docks it to the right and lets clicks reach the canvas."
+      },
+      {
+        "file": "frontend/src/ui/app-dialogs.ts",
+        "symbol": "SettingsDialog.setEngine",
+        "signature": "setEngine(text: string): void",
+        "doc": "Patches the engine status note in place."
+      },
+      {
+        "file": "frontend/src/ui/panels/page-prefs.ts",
+        "symbol": "PagePrefsRows",
+        "signature": "export class PagePrefsRows",
+        "doc": "The rows of the small preference pages (Cursors, Transparency and Gamut, Units and Rulers, Type, Enhanced Controls, Plug-ins), built once and filled by set when the dialog opens."
+      }
+    ],
+    "commands": [
+      {
+        "id": "settings",
+        "keys": ["Mod+,"],
+        "doc": "Opens the Preferences dialog; one prefs-<id> command per section opens it at that section."
+      }
+    ],
+    "routes": [],
+    "cssClasses": [
+      "cv-prefs-dlg",
+      "cv-prefs",
+      "cv-prefs-pages",
+      "cv-prefs-rail",
+      "cv-prefs-nav",
+      "cv-prefs-railtab",
+      "cv-prefs-fold",
+      "cv-prefs-wire",
+      "cv-prefs-port",
+      "cv-prefs-sec",
+      "cv-prefs-sechead",
+      "cv-prefs-secbody",
+      "cv-prefs-group",
+      "cv-prefs-label",
+      "cv-prefs-cols",
+      "is-rail-collapsed",
+      "is-folded",
+      "is-current"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/app-dialogs.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "section list and railIcons map",
+        "formvis.prefsRailCollapsed storage key",
+        "engine, GPU, generative and plug-in rows"
+      ]
+    },
+    {
+      "path": "frontend/src/ui/panels/page-prefs.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "page row list"
+      ]
+    },
+    {
+      "path": "frontend/src/styles/dialogs.css",
+      "role": "style",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      { "id": "ui.dialog-kit", "range": "^0.1.0" },
+      { "id": "ui.control-rows", "range": "^0.1.0" },
+      { "id": "ui.prefs-store", "range": "^0.1.0" },
+      { "id": "ui.dom-helpers", "range": "^0.1.0" },
+      { "id": "ui.icons", "range": "^0.1.0" },
+      { "id": "css.panels-dialogs", "range": "^0.1.0" }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "build-once-patch-in-place",
+      "text": "Every row is built once in the constructor and patched in place when the dialog opens; the dialog is never rebuilt and no innerHTML is assigned on a live container.",
+      "severity": "must"
+    },
+    {
+      "id": "add-order-is-display-order",
+      "text": "The add() call order equals the display order, or the scroll spy picks the wrong card at the end of the scroll.",
+      "severity": "must"
+    },
+    {
+      "id": "labels-through-t",
+      "text": "Section names are the English identity in data-section; every visible label goes through t() and is repainted on language change.",
+      "severity": "must"
+    },
+    {
+      "id": "change-keeps-remembered",
+      "text": "change(patch) re-reads the stored preferences and keeps tool options, dialog values and What's New state so it never overwrites what was remembered while the dialog was open.",
+      "severity": "should"
+    },
+    {
+      "id": "storage-try-catch",
+      "text": "The rail collapse state is read and written inside try/catch.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Register a section",
+      "language": "ts",
+      "snippet": "add('General', grp('Startup', restoreRow, homeRow), grp('Language', languageRow, nt('Applied to the whole window.')));",
+      "whenToUse": "Inside the constructor, after the rows exist: one add per section, in display order."
+    },
+    {
+      "title": "Open at a section",
+      "language": "ts",
+      "snippet": "{ id: 'prefs-general', label: 'General', run: () => dialogs.settings.show('General') }",
+      "whenToUse": "A command or menu entry that opens Preferences at one section."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "slotExit": "S7"
+  }
+}
