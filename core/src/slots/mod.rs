@@ -6,6 +6,7 @@ pub mod refresh;
 pub mod seed;
 pub mod source;
 pub mod storage;
+pub mod suggest;
 pub mod web;
 
 pub use manifest::{content_hash, validate};

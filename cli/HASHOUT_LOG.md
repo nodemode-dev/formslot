@@ -317,3 +317,11 @@ A `bin` folder alone made a folder look like formslot's, and `exists()` followed
 - logged: v0.15.0 · 2026-10-31
 
 `formslot slot source <id> [--file PATH] [--json]` is thin: it opens the store and calls `slots::source::read` with the standard caps. `main.rs` routes `slot source` to this file before `slot_cmd`, so `slot_cmd.rs` is unchanged. The plain form prints a header (status, version, origin repository and commit, licence, copy verdict), the exports and conventions, then each file after a `=== path` line that says whether the text matches the manifest hash, its port mode, and whether it was cut or had secrets redacted; `--json` prints the whole `SlotSource` including the texts. An unknown id, an unknown `--file` and an unindexed origin exit 1 with a message naming the fix; bad arguments exit 2.
+
+### cli/src/slot_suggest_cmd.rs · run
+
+- refers-to: cli/src/slot_suggest_cmd.rs :: run; cli/src/main.rs :: main
+- kind: explainer
+- logged: v0.16.0 · 2026-10-31
+
+`formslot slot suggest <corpus> [--limit N] [--min-copies K] [--json] [--write DIR]` is thin over `slots::suggest::suggest`. `main.rs` routes `slot suggest` beside `slot source`, leaving `slot_cmd.rs` unchanged. `--limit` defaults to 10 (0 means all), `--min-copies` to 2. `--write DIR` creates the folder and writes `<id>.json` per draft, refusing a symbolic link at the target; it never touches the store, so nothing is proposed. Text output gives rank, id, score, kind, title, summary, the reason line and the files; `--json` prints the report with each full manifest. Drafts that fail validation go to stderr and are not written. Exit 1 for an unknown corpus or an unwritable folder, 2 for bad arguments.

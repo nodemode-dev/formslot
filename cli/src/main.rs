@@ -13,6 +13,7 @@ mod service_cmd;
 mod setup_cmd;
 mod slot_cmd;
 mod slot_source_cmd;
+mod slot_suggest_cmd;
 mod symbols_cmd;
 
 use formslot_core::VERSION;
@@ -44,6 +45,7 @@ const HELP: &str = "formslot: the Form family's context service
   slot list [--status S]            the slots in the store
   slot get <id> [--json]            one slot: files, copies, events
   slot source <id> [--file PATH] [--json]   the slot's file text at its pinned commit, from git objects, in the excerpt envelope with exports and conventions (64 KiB per file, 256 KiB total)
+  slot suggest <corpus> [--limit N] [--min-copies K] [--json] [--write DIR]   rank code that exists in several places or is used from many files and draft a valid proposed manifest for each; --write DIR saves the drafts as JSON for the owner to review and pass to slot propose; nothing is proposed or confirmed
   slot seed <dir>                   import a folder of manifests as proposed
   slot refresh <id|--all> --corpus <name>   hashes, lines, contentHash and copies from a corpus
   slot propose <file.json>          store a proposal
@@ -123,6 +125,7 @@ fn main() -> ExitCode {
         "files" => corpus_cmd::files(&args[1..]),
         "family" => corpus_cmd::family(&args[1..]),
         "slot" if args.get(1).map(String::as_str) == Some("source") => slot_source_cmd::run(&args[2..]),
+        "slot" if args.get(1).map(String::as_str) == Some("suggest") => slot_suggest_cmd::run(&args[2..]),
         "slot" => slot_cmd::run(&args[1..]),
         "memory" => memory_cmd::run(&args[1..]),
         "recall" => memory_cmd::recall(&args[1..]),
