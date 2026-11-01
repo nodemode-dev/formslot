@@ -144,6 +144,12 @@ pub fn confirm(store: &mut Store, id: &str) -> crate::Result<SlotRow> {
         }
         _ => {}
     }
+    let files = manifest::files_of(&row.manifest);
+    let pairs: Vec<(String, String)> = files.iter().map(|f| (f.path.clone(), f.sha256.clone())).collect();
+    let recorded = manifest::text_at(&row.manifest, &["contentHash"]).unwrap_or("");
+    if files.is_empty() || files.iter().any(|f| f.sha256.is_empty()) || recorded != manifest::content_hash(&pairs) {
+        return Err(format!("{id} has no hashes computed from its origin; run slot refresh {id} --corpus <origin> first"));
+    }
     let mut value = row.manifest.clone();
     set_status(&mut value, "canonical", None);
     save(store, &value, "confirm", "owner", &format!("{} -> canonical", row.status))?;
@@ -181,6 +187,11 @@ fn set_status(value: &mut Value, status: &str, reason: Option<&str>) {
 }
 
 pub fn propose(store: &mut Store, value: &Value) -> crate::Result<String> {
+    let mut owned = value.clone();
+    if let Some(object) = owned.as_object_mut() {
+        object.insert("copies".to_string(), Value::Array(Vec::new()));
+    }
+    let value = &owned;
     manifest::check(value)?;
     if manifest::status_of(value) != "proposed" {
         return Err(format!(

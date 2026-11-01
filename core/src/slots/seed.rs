@@ -115,6 +115,10 @@ pub fn seed(store: &mut Store, dir: &Path) -> crate::Result<SeedReport> {
                 }
             }
             None => {
+                let mut value = value.clone();
+                if let Some(object) = value.as_object_mut() {
+                    object.insert("copies".to_string(), serde_json::Value::Array(Vec::new()));
+                }
                 storage::save(store, &value, "seed", "seed", &line.file)?;
                 line.outcome = "imported".to_string();
                 report.imported += 1;

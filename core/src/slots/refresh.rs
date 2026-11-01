@@ -32,6 +32,9 @@ fn find_corpus(store: &Store, key: &str) -> crate::Result<Corpus> {
 
 pub fn refresh(store: &mut Store, id: &str, corpus_key: &str) -> crate::Result<Refreshed> {
     let row = storage::must_get(store.conn(), id)?;
+    if row.status == "declined" || row.status == "superseded" {
+        return Err(format!("{id} is {}; a decided slot stays as it is", row.status));
+    }
     let found = find_corpus(store, corpus_key)?;
     let origin_repo = manifest::text_at(&row.manifest, &["origin", "repo"]).unwrap_or("");
     if origin_repo != found.name {
