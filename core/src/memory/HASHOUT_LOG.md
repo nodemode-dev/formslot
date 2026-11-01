@@ -21,6 +21,16 @@ Last updated: 2026-10-30 · Phase S6
 
 formvis's logs use `## title · _vX (files)` entries rather than `### path · symbol` with refers-to lines, and most of them say "Removed" somewhere, which this ingest reads as removed code: formvis gives 3,484 tombstones of 6,300 records. Recall still ranks by text, so they cost tokens only when they match; tighten the tombstone test (the `kind: removed-code` line, or "Removed:" at the start of a sentence) when the S7 packs show them crowding out live entries.
 
+### review fixes (v0.7.1)
+
+- refers-to: core/src/memory/mod.rs :: insert; core/src/memory/recall.rs :: recall, RECALL_LIMIT_MAX; core/src/migrations/010_memory_owner_guard.sql
+- kind: bug-context
+- logged: v0.7.1 · 2026-10-30
+
+From the fresh-context review of 1a343f5..v0.7.0. `insert` redacts title and text before storing (a `ghp_` token in a CLAUDE.md rule reached P0, `recall` and `memory list` verbatim) while `content_hash` stays over the source text, so reconcile still pairs an unchanged line with its record. `recall` skips `proposed` records: an agent proposal saying the opposite of an owner decline ranked second for "seam carving". The anchored budget loop kept recounting every record on every pass and stepped one character at a time between equal lengths (9.7 s for `--limit 50`); it now caches each record's cost, steps by at least 16 characters or the excess spread over the records, and `--limit` is held to 50 (5 ms for the same call). Migration 010 widens the owner guard: anchor, triggers, hash, corpus and dates are fixed, status moves only among active, stale and superseded, and superseded needs a successor; ingest's own updates (source, status, the supersede with `superseded_by`) still pass, checked by superseding a changed CLAUDE.md line and by direct UPDATEs that the triggers refuse.
+
+Known and left for S8: the decline list in declines.rs is hand-kept data (CLAUDE.md wants family lists generated; move it to a data file with a drift check or derive it from a "Declined:" convention); a record whose source line vanished while it was anchor-stale can come back to active when the symbol returns; recall scores by substring, so one-letter terms match broadly; `remember --propose` writes without a transaction and a NOOP still adds a row; owner authority is any CLAUDE.md or AGENTS.md at any depth (an agent that edits one mints owner rules); an unchanged re-ingest of formvis takes about 4 s (check_anchors runs twice).
+
 ## memory
 
 ### memory/mod.rs · record shape and event log

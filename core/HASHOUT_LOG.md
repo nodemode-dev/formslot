@@ -51,6 +51,7 @@ core/
     memory/         memory records: ingest, declines, anchors, proposals, recall (own log: src/memory/HASHOUT_LOG.md)
     search/         search, repo map and context packs (own log: src/search/HASHOUT_LOG.md)
       009_search.sql        search_unit, unit_fts, unit_tri, memory_fts (same log)
+      010_memory_owner_guard.sql  wider owner-record triggers (log: src/memory/HASHOUT_LOG.md)
 ```
 
 ## Table of contents
