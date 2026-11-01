@@ -265,7 +265,12 @@ pub fn retrieve_with(
         (WEIGHT_DERIVED, derived),
         (WEIGHT_NOTES, notes),
     ];
-    lists.extend(extra);
+    if !extra.is_empty() {
+        let mut parts = vec![(1.0, lists[0].1.clone()), (1.0, lists[1].1.clone())];
+        parts.extend(extra);
+        lists[0] = (2.0, fuse_weighted(parts));
+        lists[1] = (0.0, Vec::new());
+    }
     let hits = fuse_mixed(lists, graded);
     Ok(Retrieval {
         hits,
