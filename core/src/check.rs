@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OpenFlags, params};
@@ -92,9 +92,9 @@ pub fn request_of(v: &Value) -> Option<Request> {
     let session = v.get("session_id").and_then(Value::as_str).unwrap_or("").to_string();
     let raw = input.get("file_path").and_then(Value::as_str)?.to_string();
     let path = if Path::new(&raw).is_absolute() || cwd.is_empty() {
-        raw
+        clean(Path::new(&raw)).to_string_lossy().to_string()
     } else {
-        Path::new(&cwd).join(&raw).to_string_lossy().to_string()
+        clean(&Path::new(&cwd).join(&raw)).to_string_lossy().to_string()
     };
     let (new_text, old_text) = match tool.as_str() {
         "Write" => (input.get("content")?.as_str()?.to_string(), None),
@@ -113,6 +113,66 @@ pub fn request_of(v: &Value) -> Option<Request> {
     Some(Request { tool, path, new_text, old_text, cwd, session })
 }
 
+fn partial_string(text: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let mut from = 0;
+    while let Some(found) = text.get(from..).and_then(|t| t.find(&needle)) {
+        let at = from + found + needle.len();
+        from = at;
+        let Some(rest) = text[at..].trim_start().strip_prefix(':') else { continue };
+        let Some(body) = rest.trim_start().strip_prefix('"') else { continue };
+        let bytes = body.as_bytes();
+        let mut i = 0;
+        let mut end = None;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\\' => i += 2,
+                b'"' => {
+                    end = Some(i);
+                    break;
+                }
+                _ => i += 1,
+            }
+        }
+        let mut raw = &body[..end.unwrap_or(body.len())];
+        for _ in 0..8 {
+            if let Ok(decoded) = serde_json::from_str::<String>(&format!("\"{raw}\"")) {
+                return Some(decoded);
+            }
+            let mut cut = raw.len().saturating_sub(1);
+            while cut > 0 && !raw.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            raw = &raw[..cut];
+        }
+        return None;
+    }
+    None
+}
+
+pub fn lenient(text: &str) -> Option<Value> {
+    let tool = partial_string(text, "tool_name")?;
+    let mut input = serde_json::Map::new();
+    for key in ["file_path", "content", "old_string", "new_string"] {
+        if let Some(v) = partial_string(text, key) {
+            input.insert(key.to_string(), Value::String(v));
+        }
+    }
+    if tool == "MultiEdit" {
+        let edit = json!({
+            "old_string": input.remove("old_string").unwrap_or(Value::String(String::new())),
+            "new_string": input.remove("new_string").unwrap_or(Value::String(String::new())),
+        });
+        input.insert("edits".to_string(), json!([edit]));
+    }
+    Some(json!({
+        "tool_name": tool,
+        "cwd": partial_string(text, "cwd").unwrap_or_default(),
+        "session_id": partial_string(text, "session_id").unwrap_or_default(),
+        "tool_input": Value::Object(input),
+    }))
+}
+
 pub fn open_read(path: &Path) -> crate::Result<Connection> {
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
         .map_err(|e| format!("check: {e}"))?;
@@ -120,9 +180,26 @@ pub fn open_read(path: &Path) -> crate::Result<Connection> {
     Ok(conn)
 }
 
+pub fn clean(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() && !out.has_root() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 pub fn relative(corpus: &Target, path: &str) -> Option<String> {
+    let cleaned = clean(Path::new(path));
     let root = Path::new(&corpus.path);
-    let given = Path::new(path);
+    let given = cleaned.as_path();
     let rest = given.strip_prefix(root).ok().map(Path::to_path_buf).or_else(|| {
         let canon_root = root.canonicalize().ok()?;
         let canon = given.canonicalize().ok().or_else(|| {

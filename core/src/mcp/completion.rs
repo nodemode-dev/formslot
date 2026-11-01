@@ -14,6 +14,10 @@ fn done(values: Vec<String>) -> Value {
     json!({ "completion": { "values": shown, "total": total, "hasMore": total > MAX } })
 }
 
+fn like_escape(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
 fn corpora(prefix: &str) -> Result<Vec<String>, Rpc> {
     let store = open().map_err(Rpc::internal)?;
     let all = search::targets(store.conn()).map_err(Rpc::internal)?;
@@ -38,10 +42,10 @@ pub fn complete(params_value: &Value) -> Result<Value, Rpc> {
                     let store = open().map_err(Rpc::internal)?;
                     let mut stmt = store
                         .conn()
-                        .prepare("SELECT CAST(id AS TEXT) FROM memory_record WHERE CAST(id AS TEXT) LIKE ?1 || '%' ORDER BY id LIMIT 101")
+                        .prepare("SELECT CAST(id AS TEXT) FROM memory_record WHERE CAST(id AS TEXT) LIKE ?1 || '%' ESCAPE '\\' ORDER BY id LIMIT 101")
                         .map_err(|e| Rpc::internal(e.to_string()))?;
                     let rows = stmt
-                        .query_map(params![prefix], |r| r.get::<_, String>(0))
+                        .query_map(params![like_escape(prefix)], |r| r.get::<_, String>(0))
                         .map_err(|e| Rpc::internal(e.to_string()))?;
                     Ok(done(rows.filter_map(Result::ok).collect()))
                 }

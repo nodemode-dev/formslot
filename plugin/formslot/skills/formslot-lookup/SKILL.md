@@ -1,6 +1,6 @@
 ---
 name: formslot-lookup
-description: Look up existing code, shared slots and owner rules in a Form family repository before writing a new component, helper, panel, dialog, control row, store or style. Use when asked to add or build something that may already exist, when a hook message names a formslot slot, or when unsure whether the owner declined a feature. Uses slot_find, slot_context_pack and recall from the formslot MCP server, or the formslot command line.
+description: Look up existing code, shared slots and owner rules in a Form family repository before writing a new component, helper, panel, dialog, control row, store or style. Use when asked to add or build something that may already exist, when a hook message names a formslot slot, or when unsure whether the owner declined a feature. Uses slot_find, slot_get, slot_context_pack and slot_conventions from the formslot MCP server, or the formslot command line.
 ---
 
 # formslot lookup
@@ -18,8 +18,8 @@ Skip the lookup for edits inside a file you already know, for tests of existing 
 ## How to look
 
 1. Run slot_find with the purpose in plain words, such as "colour row for a dialog". Read the slot id, status, files and summary. Try a second wording or the likely symbol name if the first returns nothing.
-2. For the best match, run slot_context_pack to get its exports, signatures and known copies. Import or extend it rather than writing a parallel one.
-3. Run recall with the feature name. An owner record of kind declined means stop: quote the rule and its source to the user and do not build it. Other owner rules apply to how you build.
+2. For the best match, run slot_get for its files, exports and known copies, and slot_context_pack for a token-budgeted pack around the task. Import or extend it rather than writing a parallel one.
+3. Run slot_conventions with the feature name as the topic. An owner record of kind declined means stop: quote the rule and its source to the user and do not build it. Other owner rules apply to how you build.
 4. Open the file at the path and line given and confirm it still matches. The index is built from a commit and can lag the working tree.
 
 Without the MCP server, the same lookups run from a shell: `formslot search "WORDS"`, `formslot slot get ID`, `formslot recall "FEATURE"`.

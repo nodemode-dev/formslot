@@ -112,6 +112,9 @@ pub fn answer(message: &Value, transport: &str) -> Option<Value> {
     };
     let method = object.get("method").and_then(Value::as_str);
     let id = object.get("id").cloned();
+    if id.as_ref().is_some_and(|v| v.is_object() || v.is_array()) {
+        return Some(failure(Value::Null, Rpc::new(-32600, "A JSON-RPC id must be a string or a number.")));
+    }
     match (method, id) {
         (Some(method), Some(id)) if !id.is_null() => {
             let params = object.get("params").cloned().unwrap_or(Value::Null);

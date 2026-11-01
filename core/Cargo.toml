@@ -9,7 +9,7 @@ description = "formslot's engine: the corpus store, the index and the service. N
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["arbitrary_precision"] }
 sha2 = "0.10"
 getrandom = "0.4"
 regex = "1"
@@ -21,3 +21,5 @@ tree-sitter-python = "0.25.0"
 tree-sitter-rust = "0.24.2"
 tree-sitter-css = "0.25.0"
 tree-sitter-html = "0.23.2"
+ureq = { version = "3.5.0", default-features = false, features = ["rustls"] }
+keyring = "4.2.0"

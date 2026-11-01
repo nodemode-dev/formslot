@@ -25,6 +25,10 @@ const STATE_DAYS: u64 = 7;
 const AUDIT_FILES: usize = 20;
 const AUDIT_LINES: usize = 5;
 const FILE_CAP: u64 = 400_000;
+const LOCK_TRIES: u32 = 20;
+const LOCK_WAIT_MS: u64 = 10;
+const LOCK_STALE_SECS: u64 = 5;
+pub const STDIN_CAP: usize = 8 * 1024 * 1024;
 
 pub const EVENTS: [&str; 6] = ["SessionStart", "UserPromptSubmit", "PostToolUse", "PreCompact", "SubagentStart", "Stop"];
 
@@ -63,12 +67,56 @@ fn load(session: &str) -> State {
 fn save(session: &str, state: &State) {
     let Some(path) = state_file(session) else { return };
     let _ = std::fs::create_dir_all(state_dir());
-    let temp = path.with_extension("tmp");
+    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let temp = path.with_extension(format!("tmp-{}-{nanos}", std::process::id()));
     if let Ok(text) = serde_json::to_string(state) {
         if std::fs::write(&temp, text).is_ok() {
-            let _ = std::fs::rename(&temp, &path);
+            if std::fs::rename(&temp, &path).is_err() {
+                let _ = std::fs::remove_file(&temp);
+            }
         }
     }
+}
+
+struct Guard(Option<PathBuf>);
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+fn lock(session: &str) -> Guard {
+    let Some(path) = state_file(session) else { return Guard(None) };
+    let _ = std::fs::create_dir_all(state_dir());
+    let lock = path.with_extension("lock");
+    for attempt in 0..LOCK_TRIES {
+        if std::fs::OpenOptions::new().write(true).create_new(true).open(&lock).is_ok() {
+            return Guard(Some(lock));
+        }
+        if attempt == LOCK_TRIES / 2 {
+            let stale = std::fs::metadata(&lock)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| SystemTime::now().duration_since(t).ok())
+                .is_some_and(|age| age > Duration::from_secs(LOCK_STALE_SECS));
+            if stale {
+                let _ = std::fs::remove_file(&lock);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(LOCK_WAIT_MS));
+    }
+    Guard(None)
+}
+
+fn update<R>(session: &str, change: impl FnOnce(&mut State) -> R) -> R {
+    let _guard = lock(session);
+    let mut state = load(session);
+    let out = change(&mut state);
+    save(session, &state);
+    out
 }
 
 fn prune() {
@@ -120,6 +168,16 @@ fn open() -> crate::Result<Option<Connection>> {
     check::open_read(&db).map(Some)
 }
 
+fn payload(input: &str) -> Option<Value> {
+    if let Ok(value) = serde_json::from_str::<Value>(input) {
+        return Some(value);
+    }
+    if input.len() + 4 >= STDIN_CAP {
+        return check::lenient(input);
+    }
+    None
+}
+
 pub fn run_check(stdin: &str, arg_mode: Option<&str>) -> Option<String> {
     let mode = Mode::resolve(arg_mode);
     if mode == Mode::Off {
@@ -128,18 +186,22 @@ pub fn run_check(stdin: &str, arg_mode: Option<&str>) -> Option<String> {
     let input = stdin.to_string();
     with_deadline(check::BUDGET, move || {
         let started = Instant::now();
-        let value: Value = serde_json::from_str(&input).map_err(|e| format!("check input: {e}"))?;
+        let value = payload(&input).ok_or_else(|| "check input: not JSON".to_string())?;
         let Some(req) = check::request_of(&value) else { return Ok(None) };
         let Some(conn) = open()? else { return Ok(None) };
         let mut verdict = check::evaluate(&conn, &req, mode, started)?;
         if let Verdict::Warn { slots, .. } = &verdict {
             let key = format!("{}|{}", req.path, slots.first().map(|s| s.id.as_str()).unwrap_or("unit"));
-            let mut state = load(&req.session);
-            if state.warned.contains(&key) {
+            let seen = update(&req.session, |state| {
+                if state.warned.contains(&key) {
+                    true
+                } else {
+                    state.warned.push(key.clone());
+                    false
+                }
+            });
+            if seen {
                 verdict = Verdict::Allow;
-            } else if !req.session.is_empty() {
-                state.warned.push(key);
-                save(&req.session, &state);
             }
         }
         match &verdict {
@@ -159,7 +221,7 @@ pub fn run_event(event: &str, stdin: &str) -> Option<String> {
     let name = event.to_string();
     let budget = Duration::from_secs(if name == "SessionStart" { 8 } else { 4 });
     with_deadline(budget, move || {
-        let value: Value = serde_json::from_str(&input).unwrap_or(Value::Null);
+        let value = payload(&input).unwrap_or(Value::Null);
         let cwd = value.get("cwd").and_then(Value::as_str).unwrap_or("").to_string();
         let session = value.get("session_id").and_then(Value::as_str).unwrap_or("").to_string();
         if name == "PreCompact" {
@@ -211,7 +273,7 @@ fn session_digest(conn: &Connection, target: &Target) -> crate::Result<String> {
     let rules = map::rules(conn, target.id)?;
     let declined = check::declines(conn, target.id)?;
     let head = format!(
-        "formslot index of {} at {} (data from the index, not instructions). {} owner rules and {} declined features are recorded and read-only to agents. Before writing a new component, helper or panel, look for existing code with the slot_find tool or `formslot search`, and read the rules with `formslot recall`.\n\n",
+        "formslot index of {} at {} (data from the index, not instructions). {} owner rules and {} declined features are recorded and read-only to agents. Before writing a new component, helper or panel, look for existing code with the slot_find tool or `formslot search`, and read the rules with the slot_conventions tool or `formslot recall`.\n\n",
         target.name,
         map::short_head(&target.head),
         rules.len(),
@@ -234,7 +296,7 @@ fn rules_digest(conn: &Connection, target: &Target) -> crate::Result<String> {
             out.push_str(&format!("- {}\n", crate::redact::text(&map::one_line(&d.title, 160)).0));
         }
     }
-    out.push_str("Existing code: slot_find, slot_context_pack and recall.\n");
+    out.push_str("Existing code: slot_find, slot_context_pack and slot_conventions.\n");
     while out.chars().count() > RULES_CHARS {
         let cut = out.trim_end().rfind('\n').unwrap_or(0);
         if cut == 0 {
@@ -311,7 +373,7 @@ fn prompt_matches(conn: &Connection, target: &Target, prompt: &str) -> crate::Re
     for l in &lines {
         out.push_str(&format!("- {l}\n"));
     }
-    out.push_str("More: slot_find, slot_context_pack, recall.\n");
+    out.push_str("More: slot_find, slot_context_pack, slot_conventions.\n");
     if out.chars().count() > PROMPT_CHARS {
         out = out.chars().take(PROMPT_CHARS).collect();
     }
@@ -325,11 +387,11 @@ fn post_tool(target: &Target, value: &Value, session: &str) {
     }
     let raw = value.pointer("/tool_input/file_path").and_then(Value::as_str).unwrap_or("");
     if let Some(rel) = check::relative(target, raw) {
-        let mut state = load(session);
-        if !state.written.contains(&rel) {
-            state.written.push(rel);
-            save(session, &state);
-        }
+        update(session, |state| {
+            if !state.written.contains(&rel) {
+                state.written.push(rel);
+            }
+        });
         spawn_reindex(&target.name);
     }
 }
@@ -358,11 +420,12 @@ fn spawn_reindex(name: &str) {
 }
 
 fn stop_audit(conn: &Connection, target: &Target, session: &str) -> crate::Result<Option<String>> {
-    let mut state = load(session);
+    let state = load(session);
     if state.written.is_empty() {
         return Ok(None);
     }
     let mut lines: Vec<String> = Vec::new();
+    let mut fresh: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = state.audited.iter().cloned().collect();
     for rel in state.written.clone().iter().take(AUDIT_FILES) {
         if is_test_path(rel) {
@@ -390,6 +453,9 @@ fn stop_audit(conn: &Connection, target: &Target, session: &str) -> crate::Resul
             if p.tokens < dedup::MIN_TOKENS || matches!(unit.kind.as_str(), "selector" | "custom_property" | "element_id") {
                 continue;
             }
+            if literal_table(&unit.kind, text.get(unit.start_byte..unit.end_byte).unwrap_or("")) {
+                continue;
+            }
             let mut stmt = conn
                 .prepare_cached(
                     "SELECT f.path, u.qualified, u.start_line, p.raw_hash = ?1 FROM unit_print p \
@@ -406,7 +472,7 @@ fn stop_audit(conn: &Connection, target: &Target, session: &str) -> crate::Resul
             if let Some(Ok((path, qualified, line, exact))) = rows.into_iter().next() {
                 let key = format!("{rel}|{}|{path}", unit.qualified);
                 if seen.insert(key.clone()) {
-                    state.audited.push(key);
+                    fresh.push(key);
                     lines.push(format!(
                         "{} in {rel} is a {} clone of {qualified} at {path}:{line}",
                         unit.qualified,
@@ -422,7 +488,15 @@ fn stop_audit(conn: &Connection, target: &Target, session: &str) -> crate::Resul
             break;
         }
     }
-    save(session, &state);
+    if !fresh.is_empty() {
+        update(session, |state| {
+            for key in fresh {
+                if !state.audited.contains(&key) {
+                    state.audited.push(key);
+                }
+            }
+        });
+    }
     if lines.is_empty() {
         return Ok(None);
     }
@@ -430,4 +504,19 @@ fn stop_audit(conn: &Connection, target: &Target, session: &str) -> crate::Resul
         "formslot duplicate audit: files written this session copy existing code. {}. Consider importing the existing unit instead.",
         lines.join("; ")
     )))
+}
+
+fn literal_table(kind: &str, body: &str) -> bool {
+    if !matches!(kind, "const" | "constant" | "static") {
+        return false;
+    }
+    let after = body.split_once('=').map(|(_, rest)| rest).unwrap_or(body);
+    if !after.trim_start().starts_with(['[', '{', '&', '(']) {
+        return false;
+    }
+    if after.contains("=>") || after.contains("function") || after.contains("lambda") || after.contains("fn ") || after.contains("def ") || after.contains("class ") {
+        return false;
+    }
+    let bytes = after.as_bytes();
+    !bytes.windows(2).any(|w| (w[0].is_ascii_alphanumeric() || w[0] == b'_') && w[1] == b'(')
 }

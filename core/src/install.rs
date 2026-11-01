@@ -61,7 +61,7 @@ fn has_ours(event_array: &Node) -> bool {
     })
 }
 
-pub fn merge_settings(text: &str, mode: Mode) -> crate::Result<(String, Vec<String>)> {
+pub fn merge_settings(text: &str, mode: Mode, enable: bool) -> crate::Result<(String, Vec<String>)> {
     let root = jsonedit::parse(text)?;
     if !root.is_object() {
         return Err("the settings file is not a JSON object".to_string());
@@ -119,15 +119,23 @@ pub fn merge_settings(text: &str, mode: Mode) -> crate::Result<(String, Vec<Stri
         }
         Some(_) => return Err("enabledMcpjsonServers is not an array; nothing was changed".to_string()),
     }
+    if let Some(a) = root.get("disabledMcpjsonServers").filter(|a| a.is_array() && a.items().iter().any(|i| i.text() == Some(SERVER))) {
+        if enable {
+            splices.extend(jsonedit::remove_strings(a, SERVER));
+            changes.push("disabledMcpjsonServers: the formslot entry was removed (--enable)".to_string());
+        } else {
+            changes.push("disabledMcpjsonServers: lists formslot, left as it is, so Claude Code keeps the formslot server off; run install again with --enable to remove that entry".to_string());
+        }
+    }
     if let Some(s) = jsonedit::append(text, &root, &root_adds, &unit) {
         splices.push(s);
     }
     let merged = jsonedit::apply(text, splices);
-    verify(text, &merged)?;
+    verify(text, &merged, enable)?;
     Ok((merged, changes))
 }
 
-fn verify(old: &str, new: &str) -> crate::Result<()> {
+fn verify(old: &str, new: &str, enable: bool) -> crate::Result<()> {
     let before: Value = serde_json::from_str(old).map_err(|e| e.to_string())?;
     let after: Value = serde_json::from_str(new).map_err(|e| format!("the merge produced invalid JSON: {e}"))?;
     let (Some(b), Some(a)) = (before.as_object(), after.as_object()) else {
@@ -144,6 +152,13 @@ fn verify(old: &str, new: &str) -> crate::Result<()> {
             }),
             "enabledMcpjsonServers" => match (old_value.as_array(), new_value.as_array()) {
                 (Some(x), Some(y)) => y.len() >= x.len() && y[..x.len()] == x[..],
+                _ => false,
+            },
+            "disabledMcpjsonServers" if enable => match (old_value.as_array(), new_value.as_array()) {
+                (Some(x), Some(y)) => {
+                    let kept: Vec<&Value> = x.iter().filter(|v| v.as_str() != Some(SERVER)).collect();
+                    kept.len() == y.len() && kept.iter().zip(y.iter()).all(|(k, v)| *k == v)
+                }
                 _ => false,
             },
             _ => old_value == new_value,
@@ -229,6 +244,9 @@ fn write_atomic(path: &Path, text: &str) -> crate::Result<()> {
     let unique = format!("json.formslot-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
     let temp: PathBuf = path.with_extension(unique);
     let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temp).map_err(|e| format!("cannot write {}: {e}", temp.display()))?;
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = file.set_permissions(meta.permissions());
+    }
     if let Err(e) = file.write_all(text.as_bytes()) {
         let _ = std::fs::remove_file(&temp);
         return Err(format!("cannot write {}: {e}", temp.display()));
@@ -296,7 +314,27 @@ fn lock_step(repo: &Path, dry_run: bool, lines: &mut Vec<String>) -> crate::Resu
     Ok(())
 }
 
-pub fn install(repo: &Path, mode: Mode, dry_run: bool) -> crate::Result<Report> {
+struct Shape {
+    bom: bool,
+    crlf: bool,
+}
+
+fn unwrap_text(text: &str) -> (String, Shape) {
+    let (bom, rest) = match text.strip_prefix('\u{feff}') {
+        Some(r) => (true, r),
+        None => (false, text),
+    };
+    let crlf = rest.contains("\r\n") && !rest.replace("\r\n", "").contains('\n');
+    let plain = if crlf { rest.replace("\r\n", "\n") } else { rest.to_string() };
+    (plain, Shape { bom, crlf })
+}
+
+fn rewrap(text: String, shape: &Shape) -> String {
+    let body = if shape.crlf { text.replace('\n', "\r\n") } else { text };
+    if shape.bom { format!("\u{feff}{body}") } else { body }
+}
+
+pub fn install(repo: &Path, mode: Mode, enable: bool, dry_run: bool) -> crate::Result<Report> {
     if !repo.is_dir() {
         return Err(format!("{} is not a folder", repo.display()));
     }
@@ -305,20 +343,34 @@ pub fn install(repo: &Path, mode: Mode, dry_run: bool) -> crate::Result<Report> 
     let settings_path = repo.join(".claude").join("settings.json");
     let settings = read_optional(&settings_path)?;
     let (settings_text, changes) = match &settings {
-        Some(t) => merge_settings(t, mode).map_err(|e| format!("{}: {e}", settings_path.display()))?,
+        Some(t) => {
+            let (plain, shape) = unwrap_text(t);
+            let (merged, changes) = merge_settings(&plain, mode, enable).map_err(|e| format!("{}: {e}", settings_path.display()))?;
+            (rewrap(merged, &shape), changes)
+        }
         None => {
-            let (t, c) = merge_settings("{\n}\n", mode)?;
+            let (t, c) = merge_settings("{\n}\n", mode, enable)?;
             (t, c)
         }
     };
     let mcp_path = repo.join(".mcp.json");
     let mcp = read_optional(&mcp_path)?;
-    let (mcp_text, mcp_note) = merge_mcp(mcp.as_deref()).map_err(|e| format!("{}: {e}", mcp_path.display()))?;
+    let (mcp_text, mcp_note) = match &mcp {
+        Some(t) => {
+            let (plain, shape) = unwrap_text(t);
+            let (merged, note) = merge_mcp(Some(&plain)).map_err(|e| format!("{}: {e}", mcp_path.display()))?;
+            (rewrap(merged, &shape), note)
+        }
+        None => merge_mcp(None).map_err(|e| format!("{}: {e}", mcp_path.display()))?,
+    };
     let verb = if dry_run { "would change" } else { "changed" };
     let settings_same = settings.as_deref() == Some(settings_text.as_str());
     let mcp_same = mcp.as_deref() == Some(mcp_text.as_str());
     if settings_same {
         lines.push(format!("{}: nothing to change", settings_path.display()));
+        for c in changes.iter().filter(|c| c.starts_with("disabledMcpjsonServers")) {
+            lines.push(format!("  {c}"));
+        }
     } else {
         lines.push(format!("{}: {verb}", settings_path.display()));
         for c in &changes {

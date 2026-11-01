@@ -6,8 +6,6 @@ use formslot_core::check::Mode;
 use formslot_core::{hook, install, log};
 use serde_json::json;
 
-const STDIN_CAP: u64 = 8 * 1024 * 1024;
-
 fn option(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
 }
@@ -18,7 +16,7 @@ fn flag(args: &[String], name: &str) -> bool {
 
 fn stdin_text() -> String {
     let mut raw = Vec::new();
-    let _ = std::io::stdin().lock().take(STDIN_CAP).read_to_end(&mut raw);
+    let _ = std::io::stdin().lock().take(hook::STDIN_CAP as u64).read_to_end(&mut raw);
     String::from_utf8_lossy(&raw).to_string()
 }
 
@@ -63,7 +61,7 @@ pub fn install(args: &[String]) -> ExitCode {
         }
     }
     let Some(repo) = repo else {
-        eprintln!("formslot: usage: formslot install <repo> [--mode warn|deny] [--dry-run]");
+        eprintln!("formslot: usage: formslot install <repo> [--mode warn|deny] [--enable] [--dry-run]");
         return ExitCode::from(2);
     };
     let mode = match option(args, "--mode") {
@@ -84,7 +82,7 @@ pub fn install(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match install::install(&path, mode, flag(args, "--dry-run")) {
+    match install::install(&path, mode, flag(args, "--enable"), flag(args, "--dry-run")) {
         Ok(report) => {
             for line in report.lines {
                 println!("{line}");

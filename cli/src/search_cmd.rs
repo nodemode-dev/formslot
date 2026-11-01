@@ -179,16 +179,19 @@ pub fn pack(args: &[String]) -> ExitCode {
         },
         None => None,
     };
-    match option(args, "--count").as_deref() {
-        None | Some("local") => {}
-        Some("remote") => {
-            if std::env::var_os("ANTHROPIC_API_KEY").is_none() {
-                return fail("--count remote needs ANTHROPIC_API_KEY in the environment".to_string());
-            }
-            eprintln!("formslot: --count remote is not built yet (no HTTP client in the engine); using the local estimate");
-        }
+    let remote = match option(args, "--count").as_deref() {
+        None | Some("local") => false,
+        Some("remote") => true,
         Some(other) => return fail(format!("--count is local or remote, not {other}")),
-    }
+    };
+    let api_key = if remote {
+        match formslot_core::count::key() {
+            Ok(k) => Some(k),
+            Err(e) => return fail(e),
+        }
+    } else {
+        None
+    };
     let mut store = match open() {
         Ok(s) => s,
         Err(e) => return fail(e),
@@ -199,9 +202,23 @@ pub fn pack(args: &[String]) -> ExitCode {
         Err(e) => return fail(e),
     };
     let millis = started.elapsed().as_millis() as u64;
+    let counted = if let Some(key) = &api_key {
+        match formslot_core::count::remote(key, &built.prompt) {
+            Ok(n) => Some(n),
+            Err(e) => {
+                eprintln!("formslot: {e}; using the local estimate");
+                None
+            }
+        }
+    } else {
+        None
+    };
     if flag(args, "--json") {
         let mut value = serde_json::to_value(&built).unwrap_or_default();
         value["millis"] = json!(millis);
+        if let Some(n) = counted {
+            value["remoteTokens"] = json!(n);
+        }
         value["prompt"] = json!(built.prompt);
         println!("{}", serde_json::to_string_pretty(&value).unwrap_or_default());
         return ExitCode::SUCCESS;
@@ -213,6 +230,9 @@ pub fn pack(args: &[String]) -> ExitCode {
         built.corpus, built.tier, built.budget, built.estimator
     );
     eprintln!("P0 sha256 {}", built.p0_sha256);
+    if let Some(n) = counted {
+        eprintln!("remote count (Messages count_tokens): {n} tokens");
+    }
     eprintln!(
         "tokens P0 {}{}  P1 {}  P2 {}  sent {}  ({} ms)",
         built.tokens.p0,

@@ -3,6 +3,7 @@ pub type Result<T> = std::result::Result<T, String>;
 pub mod api;
 pub mod check;
 pub mod config;
+pub mod count;
 pub mod corpus;
 pub mod dedup;
 pub mod discovery;

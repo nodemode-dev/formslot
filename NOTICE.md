@@ -23,6 +23,8 @@ Crates added directly, with the versions in `Cargo.lock`. Each runs in the distr
 | tree-sitter-rust | 0.24.2 | MIT | distributed binary | Rust grammar (`core`) |
 | tree-sitter-css | 0.25.0 | MIT | distributed binary | CSS grammar (`core`) |
 | tree-sitter-html | 0.23.2 | MIT | distributed binary | HTML grammar (`core`) |
+| ureq | 3.5.0 | MIT OR Apache-2.0 | distributed binary | the `pack --count remote` HTTPS call, with rustls (`core`) |
+| keyring | 4.2.0 | MIT OR Apache-2.0 | distributed binary | the Anthropic key from the system password store (`core`) |
 | blake3 | 1.8.7 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception; used under Apache-2.0 | distributed binary | identity hashes for dedup (`core`) |
 
 ## Derived from formMCP

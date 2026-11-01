@@ -136,8 +136,32 @@ impl Parser<'_> {
     }
 }
 
+fn has_comments(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'"' => {
+                at += 1;
+                while at < bytes.len() && bytes[at] != b'"' {
+                    at += if bytes[at] == b'\\' { 2 } else { 1 };
+                }
+                at += 1;
+            }
+            b'/' if matches!(bytes.get(at + 1), Some(b'/' | b'*')) => return true,
+            _ => at += 1,
+        }
+    }
+    false
+}
+
 pub fn parse(text: &str) -> Result<Node, String> {
-    serde_json::from_str::<serde_json::Value>(text).map_err(|e| format!("not valid JSON: {e}"))?;
+    if let Err(e) = serde_json::from_str::<serde_json::Value>(text) {
+        if has_comments(text) {
+            return Err("it contains comments (JSON with comments); formslot does not rewrite a file that has comments, because they could be lost: remove the comments or add the entries by hand".to_string());
+        }
+        return Err(format!("not valid JSON: {e}"));
+    }
     let mut parser = Parser { bytes: text.as_bytes(), text, at: 0 };
     let node = parser.value()?;
     Ok(node)
@@ -296,6 +320,25 @@ pub fn apply(text: &str, mut splices: Vec<Splice>) -> String {
     let mut out = text.to_string();
     for s in splices {
         out.replace_range(s.start..s.end, &s.text);
+    }
+    out
+}
+
+pub fn remove_strings(array: &Node, value: &str) -> Vec<Splice> {
+    let items = array.items();
+    let n = items.len();
+    let hit = |i: usize| items[i].text() == Some(value);
+    let Some(last_kept) = (0..n).rev().find(|i| !hit(*i)) else {
+        return vec![Splice { start: array.start, end: array.end, text: "[]".to_string() }];
+    };
+    let mut out = Vec::new();
+    for i in 0..last_kept {
+        if hit(i) {
+            out.push(Splice { start: items[i].start, end: items[i + 1].start, text: String::new() });
+        }
+    }
+    if last_kept + 1 < n {
+        out.push(Splice { start: items[last_kept].end, end: items[n - 1].end, text: String::new() });
     }
     out
 }
