@@ -33,3 +33,38 @@ Each question is a request a developer could put to an agent before the change e
 - The 27 slot manifests are formvis-family UI and shell code, so reuse questions on backend or engine helpers have no slot to hit.
 - One author, one pass: no second reviewer checked that each task is unambiguous. A few reuse tasks (for example the `hexOf` one) have several plausible helpers across files; those list every copy found, but a missed copy would be marked wrong.
 - The set measures finding, not whether the proposed edit is right.
+
+## Held-out set (v0.11.0)
+
+`gold_heldout.jsonl` holds 118 questions in the same JSON shape (`id`, `corpus`, `task`, `kind`, `expect.slots`, `expect.files`, `expect.symbols`, `expect.memory`, `source`). Ids are `h001` and up. Ids are stable labels, not a count: 16 drafted lines were dropped after validation to stay under 120, so the sequence has gaps.
+
+### How it was written
+
+- Written by a fresh-context author (agent `fs-gold2`) who never saw the ranking code. Not read: `core/src/search/`, `core/src/eval.rs`, `core/src/memory/`, and the existing evaluation reports. Read: this file, the first ten lines of `gold.jsonl` (for the shape), the slot manifests in `data/slots/` (for slot ids and file lists), `data/declines.json`, the git history of the three corpora, and the owner-rule documents named in each `source`.
+- Tasks come from real history. `find` lines come from feature and fix commits (`source` is `commit <sha> <subject>`); the expected files are the ones the commit touched that still exist at HEAD, with a symbol when the commit centred on one. `reuse` lines come from a helper that exists at HEAD (`source` is `path:line` or a path). `convention` and `decline` lines come from rules in each repository's CLAUDE.md, AGENTS.md, harness SKILL.md and sub-skills, NOTICE.md and docs/MCP.md, and from `data/declines.json`; `memory` holds a lowercase phrase lifted from the rule.
+- Wording is how an agent or developer would ask before the change exists. File and symbol names appear only where a person would say them.
+- Aimed at no overlap with `gold.jsonl`: no task text is shared. Formvis lines avoid the commits and helpers of the first set; two of them (`h118`, `h123`) still list a file the first set also expects (`prefs.ts`, `history.ts`). The subform and formslot corpora are new to the evaluation. Several subform reuse lines name helpers that were ported from formvis and exist in both corpora (`dom.ts`, `dialogs.ts`, `toast.ts`, `controls.ts`).
+- Checked by a read-only script: every line parses, has the required fields, every expected file is in `git ls-files` of its corpus at HEAD, every symbol matches a definition regex in its file, ids are unique, memory is non-empty exactly for convention and decline lines, and `expect.slots` equals the slots whose manifests list an expected file (for formslot lines `rule.family-laws` is also given where the expected file is CLAUDE.md).
+
+### Counts
+
+| kind | count |
+| --- | --- |
+| find | 53 |
+| reuse | 22 |
+| convention | 27 |
+| decline | 16 |
+
+| corpus | count | find | reuse | convention | decline |
+| --- | --- | --- | --- | --- | --- |
+| subform | 72 | 30 | 14 | 19 | 9 |
+| formslot | 33 | 14 | 4 | 8 | 7 |
+| formvis | 13 | 9 | 4 | 0 | 0 |
+
+### Weaknesses specific to this set
+
+- The corpus label `formslot` for convention and decline lines drawn from `data/declines.json` (two formMCP declines, `h081` and `h082`) is a convenience: those rules belong to formMCP and live in formslot's data folder.
+- Convention and decline tasks for subform and formslot all point at a handful of files (CLAUDE.md, NOTICE.md, the harness sub-skills), so file recall is easy and memory recall is the real test. The `memory` phrases are exact lowercase fragments of the owner text and a paraphrasing store may miss them.
+- No expected file or symbol sits in `core/src/search/`, `core/src/memory/` or `core/src/eval.rs`, so nothing in the set was chosen from code the author was barred from reading; as a result the set does not test finding the ranking, memory or eval code itself.
+- Reuse lines whose helper has a twin (`h045` minimal_env in two files, `h129` homography in two files) list every copy found; a missed copy would score wrong.
+- Mixed skew: subform history is only about 100 commits, so several `find` lines come from one commit (for example `abcd59a`, `0eb05a7`).
