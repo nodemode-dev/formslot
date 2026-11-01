@@ -26,11 +26,10 @@ const POOL_TEXT_TRIGRAM: usize = 20;
 const WEIGHT_TEXT: f64 = 1.0;
 const GRAPH_SEEDS: usize = 8;
 const SLOT_POOL: usize = 10;
+const SLOT_DEEP: usize = 40;
 const SLOT_FUSED: usize = 5;
 const TEST_PENALTY: f64 = 0.5;
 const TEXT_PENALTY: f64 = 0.8;
-const WEIGHT_SLOT: f64 = 2.0;
-const WEIGHT_FOREIGN_SLOT: f64 = 0.5;
 const WEIGHT_MEMORY: f64 = 2.0;
 const MEMORY_FUSED: usize = 4;
 const MEMORY_COVERAGE: f64 = 0.3;
@@ -147,10 +146,19 @@ pub fn is_text_unit(kind: &str) -> bool {
 }
 
 pub fn fuse_weighted(lists: Vec<(f64, Vec<Hit>)>) -> Vec<Hit> {
+    fuse_mixed(lists, Vec::new())
+}
+
+pub fn fuse_mixed(lists: Vec<(f64, Vec<Hit>)>, graded: Vec<(f64, Hit)>) -> Vec<Hit> {
+    let mut all: Vec<Vec<(f64, Hit)>> = lists
+        .into_iter()
+        .map(|(w, l)| l.into_iter().map(|h| (w, h)).collect())
+        .collect();
+    all.push(graded);
     let mut order: Vec<String> = Vec::new();
     let mut merged: HashMap<String, Hit> = HashMap::new();
-    for (weight, list) in lists {
-        for (rank, hit) in list.into_iter().enumerate() {
+    for list in all {
+        for (rank, (weight, hit)) in list.into_iter().enumerate() {
             let add = weight / (RRF_K + (rank + 1) as f64);
             match merged.get_mut(&hit.key) {
                 Some(existing) => {
@@ -222,41 +230,43 @@ pub fn retrieve_with(
     .take(NOTES_FUSED)
     .collect();
     let wt = WEIGHT_TEXT;
-    let pool: Vec<Hit> = fuse_weighted(vec![
+    let mut text_trigram = text_trigram;
+    if let Some(top) = text_lexical.first()
+        && !text_trigram.iter().any(|h| h.key == top.key)
+    {
+        let mut credit = top.clone();
+        credit.why = vec!["trigram credit".to_string()];
+        text_trigram.insert(0, credit);
+    }
+    let deep: Vec<Hit> = fuse_weighted(vec![
         (1.0, lexical.clone()),
         (1.0, trigram.clone()),
         (wt, text_lexical.clone()),
         (wt, text_trigram.clone()),
     ])
     .into_iter()
-    .take(SLOT_POOL)
+    .take(SLOT_DEEP)
     .collect();
-    let slot_matches = slots::rank(conn, query, &pool, corpora)?;
-    let mut slot_hits: Vec<Hit> = Vec::new();
-    let mut slot_weak: Vec<Hit> = Vec::new();
-    for (h, m) in slots::hits(&slot_matches).into_iter().zip(slot_matches.iter()) {
-        if m.grounded {
-            slot_hits.push(h);
-        } else {
-            slot_weak.push(h);
-        }
-    }
-    slot_hits.truncate(SLOT_FUSED);
-    slot_weak.truncate(SLOT_FUSED);
+    let pool: Vec<Hit> = deep.iter().take(SLOT_POOL).cloned().collect();
+    let slot_matches = slots::rank(conn, query, &pool, &deep, corpora)?;
+    let graded: Vec<(f64, Hit)> = slots::hits(&slot_matches)
+        .into_iter()
+        .zip(slot_matches.iter())
+        .map(|(h, m)| (m.weight, h))
+        .take(SLOT_FUSED)
+        .collect();
     let mut lists = vec![
         (1.0, lexical),
         (1.0, trigram),
         (wt, text_lexical),
         (wt, text_trigram),
         (1.0, graph),
-        (WEIGHT_FOREIGN_SLOT, slot_weak),
         (WEIGHT_MEMORY, memory),
         (WEIGHT_DERIVED, derived),
         (WEIGHT_NOTES, notes),
-        (WEIGHT_SLOT, slot_hits),
     ];
     lists.extend(extra);
-    let hits = fuse_weighted(lists);
+    let hits = fuse_mixed(lists, graded);
     Ok(Retrieval {
         hits,
         slots: slot_matches,

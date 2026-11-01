@@ -10,6 +10,9 @@ use crate::slots::storage;
 const K1: f64 = 1.2;
 const B: f64 = 0.75;
 const FOREIGN_SLOT_COVERAGE: f64 = 0.6;
+const WEIGHT_STRONG: f64 = 2.0;
+const WEIGHT_NEUTRAL: f64 = 1.0;
+const WEIGHT_WEAK: f64 = 0.5;
 const STYLE_KINDS: [&str; 4] = ["selector", "element_id", "style", "custom_property"];
 
 #[derive(Debug, Clone)]
@@ -23,6 +26,7 @@ pub struct Match {
     pub score: f64,
     pub text_score: f64,
     pub grounded: bool,
+    pub weight: f64,
     pub why: String,
 }
 
@@ -30,6 +34,16 @@ struct Doc {
     m: Match,
     tf: HashMap<String, f64>,
     len: f64,
+    rule: bool,
+}
+
+const RULE_DOCS: [&str; 3] = ["CLAUDE.md", "AGENTS.md", "NOTICE.md"];
+const DEEP_PATH_RANK: usize = 40;
+
+fn is_rule_slot(id: &str, kind: &str, files: &[(String, i64)]) -> bool {
+    kind == "rule"
+        || id.starts_with("rule.")
+        || (!files.is_empty() && files.iter().all(|(p, _)| RULE_DOCS.contains(&p.as_str())))
 }
 
 fn str_of<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -74,7 +88,9 @@ fn docs(conn: &Connection) -> crate::Result<Vec<Doc>> {
         }
         add(&mut tf, &mut len, str_of(m, "summary"), 1.0);
         add(&mut tf, &mut len, str_of(m, "description"), 1.0);
+        let rule = is_rule_slot(&row.id, str_of(m, "kind"), &files);
         out.push(Doc {
+            rule,
             m: Match {
                 id: row.id.clone(),
                 status: row.status.clone(),
@@ -85,6 +101,7 @@ fn docs(conn: &Connection) -> crate::Result<Vec<Doc>> {
                 score: 0.0,
                 text_score: 0.0,
                 grounded: false,
+                weight: 0.0,
                 why: String::new(),
             },
             tf,
@@ -98,7 +115,7 @@ pub fn all(conn: &Connection) -> crate::Result<Vec<Match>> {
     Ok(docs(conn)?.into_iter().map(|d| d.m).collect())
 }
 
-pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -> crate::Result<Vec<Match>> {
+pub fn rank(conn: &Connection, query: &str, units: &[Hit], deep: &[Hit], corpora: &[Target]) -> crate::Result<Vec<Match>> {
     let docs = docs(conn)?;
     if docs.is_empty() {
         return Ok(Vec::new());
@@ -135,8 +152,10 @@ pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -
     let mut files: Vec<(usize, f64)> = Vec::new();
     for (i, d) in docs.iter().enumerate() {
         let mut score = 0.0;
-        for (rank, h) in units.iter().filter(|h| !STYLE_KINDS.contains(&h.unit_kind.as_str())).enumerate() {
-            let same_repo = d.m.origin_repo.is_empty()
+        let source = if d.rule { deep } else { units };
+        for (rank, h) in source.iter().filter(|h| !STYLE_KINDS.contains(&h.unit_kind.as_str())).enumerate() {
+            let same_repo = d.rule
+                || d.m.origin_repo.is_empty()
                 || h.corpus == d.m.origin_repo
                 || !corpora.iter().any(|c| c.name == d.m.origin_repo);
             if same_repo && d.m.files.iter().any(|(p, _)| *p == h.path) {
@@ -150,11 +169,22 @@ pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -
     files.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| docs[a.0].m.id.cmp(&docs[b.0].m.id)));
     let text_scores: HashMap<usize, f64> = text.iter().cloned().collect();
     let need = FOREIGN_SLOT_COVERAGE;
-    let evidence: Vec<bool> = (0..docs.len())
+    let in_files = |i: usize, list: &[Hit]| -> bool {
+        list.iter()
+            .filter(|h| !STYLE_KINDS.contains(&h.unit_kind.as_str()))
+            .any(|h| docs[i].m.files.iter().any(|(p, _)| *p == h.path))
+    };
+    let weights: Vec<f64> = (0..docs.len())
         .map(|i| {
             let origin = &docs[i].m.origin_repo;
             let native = origin.is_empty() || corpora.iter().any(|c| c.name == *origin);
-            native || coverage[i] >= need || files.iter().any(|(j, _)| *j == i)
+            if docs[i].rule {
+                return if coverage[i] >= need || in_files(i, units) { WEIGHT_STRONG } else { WEIGHT_NEUTRAL };
+            }
+            if native || files.iter().any(|(j, _)| *j == i) {
+                return WEIGHT_STRONG;
+            }
+            WEIGHT_WEAK + (WEIGHT_STRONG - WEIGHT_WEAK) * (coverage[i] / need).min(1.0)
         })
         .collect();
     let mut fused: HashMap<usize, (f64, Vec<String>)> = HashMap::new();
@@ -168,18 +198,18 @@ pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -
         e.0 += 1.0 / (RRF_K + (r + 1) as f64);
         e.1.push(format!("files #{}", r + 1));
     }
-    let mut out: Vec<Match> = fused
+    let mut out: Vec<(usize, Match)> = fused
         .into_iter()
         .map(|(i, (score, why))| {
             let mut m = docs[i].m.clone();
             m.score = score;
             m.text_score = text_scores.get(&i).copied().unwrap_or(0.0);
-            m.grounded = evidence[i];
+            m.weight = weights[i];
             m.why = why.join(", ");
-            m
+            (i, m)
         })
         .collect();
-    out.sort_by(|a, b| {
+    out.sort_by(|(_, a), (_, b)| {
         b.score
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -187,7 +217,16 @@ pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -
             .then_with(|| (b.status == "canonical").cmp(&(a.status == "canonical")))
             .then_with(|| a.id.cmp(&b.id))
     });
-    Ok(out)
+    if let Some((i, m)) = out.first_mut()
+        && m.weight < WEIGHT_NEUTRAL
+        && in_files(*i, &deep[..deep.len().min(DEEP_PATH_RANK)])
+    {
+        m.weight = WEIGHT_NEUTRAL;
+    }
+    for (_, m) in out.iter_mut() {
+        m.grounded = m.weight >= WEIGHT_STRONG;
+    }
+    Ok(out.into_iter().map(|(_, m)| m).collect())
 }
 
 pub fn hits(matches: &[Match]) -> Vec<Hit> {
