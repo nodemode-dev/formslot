@@ -50,6 +50,11 @@ core/
     slots/          slot manifests, store, refresh, copies, lockfile, consumer drift (own log: src/slots/HASHOUT_LOG.md)
     memory/         memory records: ingest, declines, anchors, proposals, recall (own log: src/memory/HASHOUT_LOG.md)
     search/         search, repo map and context packs (own log: src/search/HASHOUT_LOG.md)
+    mcp/            the MCP server: tools, resources, prompts, completion, HTTP and stdio (own log: src/mcp/HASHOUT_LOG.md)
+    check.rs        the PreToolUse check: declined features and reuse (section "hooks, check and install" below)
+    hook.rs         the other hook events: SessionStart, UserPromptSubmit, PostToolUse, SubagentStart, Stop
+    install.rs      formslot install: settings, .mcp.json and slots.lock.json merges
+    jsonedit.rs     text-level JSON edits that keep key order and layout
       009_search.sql        search_unit, unit_fts, unit_tri, memory_fts (same log)
       010_memory_owner_guard.sql  wider owner-record triggers (log: src/memory/HASHOUT_LOG.md)
 ```
@@ -710,3 +715,127 @@ A name is the unit's own name (the last segment of the qualified one), lowercase
 - logged: v0.5.0 · 2026-10-30
 
 Research B06 counted six colour-row twins (seven with swatchRow). Read in the source, three are functions: `colorRow` in ui/panels/controls.ts, `colourRow` in ui/panels/page-prefs.ts and `SettingsDialog.colorRow` in ui/app-dialogs.ts, and the related band pairs all three by name. The other four are not code to reuse: `colorRow` in stroke-path-dialog.ts and content-fill-dialog.ts are local constants holding a built element or a selectRow result inside a constructor, `colourRow` in artboard-dialog.ts is an uninitialised `HTMLElement` field, and `swatchRow` in filter-panel.ts is a local element. Extracting constructor locals and fields as units would add thousands of low-value units, so it was not done.
+
+## hooks, check and install (v0.9.0)
+
+From Phase S9: core/src/check.rs, hook.rs, install.rs, jsonedit.rs, cli/src/hook_cmd.rs and plugin/formslot/.
+
+### core/src/check.rs · evaluate
+
+- refers-to: core/src/check.rs :: evaluate
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+Warn is `additionalContext` plus `systemMessage` with no `permissionDecision`. The hooks reference (PreToolUse decision control) lists `ask` as a prompt to the user and says an unanswerable prompt in a `-p` run is denied, so `ask` would turn every duplicate warning into a block in headless and SDK runs, against "never block on anything but declines". `allow` is also wrong: it skips the permission prompt. With neither, the normal permission flow is untouched, Claude receives the text next to the tool result (the reference places PreToolUse context there, after the call, not before it), and the user sees `systemMessage` at once. Declines use `permissionDecision: "deny"` with the owner rule in `permissionDecisionReason`, which Claude sees.
+
+### core/src/check.rs · find_decline
+
+- refers-to: core/src/check.rs :: find_decline, doc_path
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+Triggers are matched on word boundaries after `split_words` (camelCase, digits, punctuation and underscores split, case folded), so `seamCarving`, `seam_carving` and `seam-carving.ts` all hit "seam carving". A phrase counts only when the write adds it: it must be absent from `old_string` (Edit) or from the file already on disk (Write), so editing a file that already mentions a declined thing is not blocked. Path triggers apply to new files only. Documentation files are not scanned for content, because the rules themselves and the HASHOUT logs name the declined features. Records are read through `memory::list` (kind `declined`, status `active`), so the move of the decline list into a data file by fs-carry changes nothing here. Known cost: broad triggers ("live fill", "add a provider", "sparkle") can hit code that is unrelated; the owner edits the trigger list at its source.
+
+### core/src/check.rs · score_slots
+
+- refers-to: core/src/check.rs :: score_slots, slot_docs
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+A slot qualifies when two terms match its id, title, tags or exported symbols (weight at least 2.5), or one such term plus three matches in all, or one id/title/tag term of five letters or more that no other slot carries (`toast` finds `ui.toast`). Terms are stemmed, generic words (index, util, ui, create, src) are dropped, and colour/color style spellings are folded. IDF is `ln(1 + N / df)`. Chosen against the formvis seed set, not tuned on a gold set: `stroke-colour-row.ts` finds `ui.control-rows` (color, row, stroke); an unrelated `lut-bake.ts` finds nothing. `snack-bar.ts` does not find `ui.toast`; the lexical gap is left for S10.
+
+### core/src/check.rs · Mode::Deny
+
+- refers-to: core/src/check.rs :: evaluate, Mode
+- kind: warning-context
+- logged: v0.9.0 · 2026-10-30
+
+`deny` mode is an opt-in for repositories that want duplicates blocked: it denies only when a canonical slot matches on three or more strong terms. No slot in the seed set is canonical yet (all 25 are proposed), so `deny` currently behaves like `warn` there. The default and the plugin never block on reuse.
+
+### core/src/check.rs · open_read
+
+- refers-to: core/src/check.rs :: open_read
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+Hooks open the store with `SQLITE_OPEN_READ_ONLY` and a 300 ms busy timeout instead of `Store::open`, which sets WAL, runs the migration check and waits 5 s for a lock; a running index run must never hold up a Write. A missing store prints nothing and is never created.
+
+### core/src/hook.rs · with_deadline
+
+- refers-to: core/src/hook.rs :: with_deadline
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+Every hook body runs on a worker thread and the process waits at most 900 ms (check), 4 s (events) or 8 s (SessionStart). A panic, an error or a timeout writes one `hook_error` line to the log and prints nothing; the exit code is always 0 so a hook can never fail a session. `onFailure` is left unset in the plugin for the same reason.
+
+### core/src/hook.rs · PreCompact
+
+- refers-to: core/src/hook.rs :: run_event
+- kind: warning-context
+- logged: v0.9.0 · 2026-10-30
+
+The hooks reference gives PreCompact only `decision: block` and discards `systemMessage` and `continue`; there is no context channel. `formslot hook PreCompact` therefore prints nothing and the plugin does not register it. The digest comes back after compaction through SessionStart with matcher `compact`, which the reference lists. `formslot install` registers the same six events as the plugin.
+
+### core/src/hook.rs · spawn_reindex
+
+- refers-to: core/src/hook.rs :: spawn_reindex, post_tool
+- kind: warning-context
+- logged: v0.9.0 · 2026-10-30
+
+`formslot reindex` reads git objects at a revision, so it sees committed changes only; a file written this session and not committed is not in the index. That is why the PreToolUse check compares the text in the tool input and the Stop audit fingerprints the working-tree file (`symbols::extract` plus `dedup::fingerprint`) rather than waiting for the reindex. The detached child uses `process_group(0)` on Unix, null stdio, and a stamp file keeps it to one start per 20 seconds per corpus.
+
+### core/src/hook.rs · stop_audit
+
+- refers-to: core/src/hook.rs :: stop_audit
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+The audit prints a `systemMessage` only. `decision: block` or Stop `additionalContext` would continue the turn at the cost of a model call, and the brief asked for a warning. It reads only the files recorded by PostToolUse for this session (at most 20), skips test paths and units under 30 tokens (`dedup::MIN_TOKENS`), excludes the file's own path, and records each reported pair so a later Stop in the session stays quiet.
+
+### core/src/hook.rs · session_digest
+
+- refers-to: core/src/hook.rs :: session_digest, rules_digest, prompt_matches
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+The digest is `map::formmap` (1,400 tokens) with a header line and is trimmed from the end until the conservative code estimate (3.6 bytes per token) is under 1,900. Measured on formvis: 1,566 tokens, 1.2 s, mostly the PageRank walk; it is not cached. The prompt hook admits a memory record only when the record text holds at least two of the prompt's terms and skips `hashout`, `tombstone` and `declined` kinds (a declined feature named in the prompt is shown first from the trigger match instead). All text is written as index data with no imperatives, because the reference warns that out-of-band command phrasing can trigger prompt-injection defences.
+
+### core/src/jsonedit.rs · append
+
+- refers-to: core/src/jsonedit.rs :: parse, append, apply
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+A small position-aware JSON parser (byte spans for every value and member) lets `install` insert new members and array items as splices into the original text. Existing bytes outside the insertion points are untouched: key order, indentation, inline arrays, the `$schema` line and the attribution block all survive byte for byte. serde_json cannot do this without `preserve_order`, which would change the key order of every existing JSON output in the workspace. The document is validated by serde_json before parsing, and `install::verify` re-parses the result and refuses unless every old top-level value is equal (for `hooks` and `enabledMcpjsonServers`, unless the old lists are a prefix of the new). Indentation follows the first member of the root object; one-line containers get one-line insertions.
+
+### core/src/install.rs · lock_step
+
+- refers-to: core/src/install.rs :: lock_step
+- kind: warning-context
+- logged: v0.9.0 · 2026-10-30
+
+`slots.lock.json` is written only when absent, through `consumer::apply`, for the canonical or proposed slots whose files are all hashed and at least one of which exists in the repository; `apply` also pulls in dependencies, so the lock can list slots whose files are missing (recorded with an empty `installedSha256`, as `slot apply` always does). A repository with no matching slot, or no store, gets an empty lock. The lock step runs after the settings and `.mcp.json` writes, so a slot whose file is `.mcp.json` counts as present in a repository that had none.
+
+### core/src/install.rs · event_groups
+
+- refers-to: core/src/install.rs :: event_groups
+- kind: rationale
+- logged: v0.9.0 · 2026-10-30
+
+Hook commands are shell form (`formslot check`, `formslot hook Stop`) so the `formslot` and `formslot.bat` launchers resolve on every platform; exec form would need a real executable on Windows. The binary must be on PATH; when it is not, the hook fails as a non-blocking error and the session goes on. No `permissions.allow` entries are written: widening permissions is the owner's call. `--mode deny` writes `formslot check --mode deny`. A repository that already has a command starting with `formslot check` or `formslot hook` under an event is left as it is, including a different `--mode`.
+
+### cli/src/hook_cmd.rs · check, event, install
+
+- refers-to: cli/src/hook_cmd.rs :: check, event, install
+- kind: explainer
+- logged: v0.9.0 · 2026-10-30
+
+Thin: stdin is read to 8 MiB, the core returns the line to print, and every failure path exits 0 except `install`, which exits 1 with a message and 2 for usage.
+
+### plugin/formslot · layout
+
+- refers-to: plugin/formslot/.claude-plugin/plugin.json :: name
+- kind: explainer
+- logged: v0.9.0 · 2026-10-30
+
+Validated with `claude plugin validate plugin/formslot` (passed). Manifest keys are only `name`, `displayName`, `version`, `description`, `author`, `license`, `keywords`; hooks, agents, skills and `.mcp.json` load from their default folders. `hooks/hooks.json` has the `hooks` wrapper the reference requires. The scout agent lists both `mcp__plugin_formslot_formslot__*` (the callable form for a plugin-bundled server, per the MCP reference) and `mcp__formslot__*` (the form when `formslot install` wrote `.mcp.json`); plugin agents ignore `mcpServers`, `hooks` and `permissionMode`, so none is set. No `marketplace.json`: the plan says formslot runs no marketplace, and `claude --plugin-dir plugin/formslot` loads it locally. The skill passes the god-tier gates: name `formslot-lookup` (16 characters, lowercase hyphen), description 429 characters, no XML-like tags, no emoji, no U+2014, no README in the folder.

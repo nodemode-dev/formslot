@@ -13,7 +13,7 @@ Last updated: 2026-10-30 · Phase S7 review
 
 From the fresh-context review of 1a343f5..v0.7.0. Nothing in a pack passed the second secret scan: excerpt text, rule and memory lines, slot cards, the task line and FORMMAP rule titles now go through `redact::text` before they are counted (checked with an `sk-ant-` and an `AKIA` key in a function body and a `ghp_` token in CLAUDE.md: all three print as `[redacted by formslot]`). Rule titles are "heading: first words", so `text.starts_with(title)` never held and every rule printed its opening twice; `title_and_text` finds the ": " split whose tail starts the text and prints heading plus text once (formvis P0 now carries 7 owner rules in the same 350 tokens, up from 5; P0 is still byte-identical across runs and tiers, new hash 7e2e8ed4...). A pack whose P0 would take more than half the budget falls back to T1, and the task line is clipped to what is left, so `--tier T16 --tokens 100` sends 5 tokens instead of 1,051. CC-BY-SA is `no_copy`. `index::ensure` skips a corpus with no extracted units and one whose repository can no longer be opened, so one moved docs-only corpus no longer breaks every search. `search rebuild` is the rebuild only when it is the whole query.
 
-Known and left for S8: `--formmap --tokens N` does not shrink the fixed header below about 150 tokens; `params_of` stops at the `>` of an arrow type in map labels.
+Closed in v0.9.0: `--formmap --tokens N` shrinks its sections or errors with the minimum, and `params_of` keeps arrow types in parameter lists.
 
 ### core/src/migrations/009_search.sql · search_unit, unit_fts, unit_tri
 
