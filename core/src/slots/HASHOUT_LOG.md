@@ -108,3 +108,61 @@ Read-only. `GET /api/slots?status=` validates the status (400 on an unknown one)
 - logged: v0.5.0 · 2026-10-30
 
 Made `pub` (one word) so the slot store stamps events with the same clock helper instead of a second date routine.
+
+## Review fixes (v0.5.1)
+
+### core/src/migrations/007_slot_status.sql · status triggers
+
+- refers-to: core/src/migrations/007_slot_status.sql :: slot_decided_stays, slot_canonical_not_demoted
+- kind: rationale
+- logged: v0.5.1 · 2026-10-30
+
+`confirm`, `decline` and `refresh` read a slot and save it later, so two of them racing could reopen a declined slot (the fresh-context review saw 36 of 60 racing runs end canonical after a decline) or write an old `proposed` over a confirmed slot. The store now refuses both at the row: a declined or superseded slot never changes status, and a canonical slot is never set back to proposed. The command that loses the race fails with that message; nothing is half written because each save is one transaction.
+
+### core/src/slots/storage.rs · confirm needs refreshed hashes
+
+- refers-to: core/src/slots/storage.rs :: confirm
+- kind: rationale
+- logged: v0.5.1 · 2026-10-30
+
+A slot reaches canonical only when every file has a sha256 and the recorded contentHash equals the hash recomputed from them, which is what `slot refresh` produces; otherwise confirm says to refresh first. `propose` and `seed` empty `copies`, which are derived and never hand-written. A proposal can still carry 64-hex file hashes of its own; confirm checks they are consistent, not that they match the origin, so refresh before confirming stays the owner's step.
+
+### core/src/slots/refresh.rs · decided slots
+
+- refers-to: core/src/slots/refresh.rs :: refresh
+- kind: rationale
+- logged: v0.5.1 · 2026-10-30
+
+`refresh <id>` refuses declined and superseded slots, as `refresh --all` already skipped them: a decided record stays as it is.
+
+### core/src/slots/lock.rs · write
+
+- refers-to: core/src/slots/lock.rs :: write
+- kind: warning-context
+- logged: v0.5.1 · 2026-10-30
+
+The lockfile is the one file formslot writes in a consumer repository. A pre-existing `slots.lock.json.tmp` symlink used to be followed, so the JSON landed outside the repository. Now a lockfile that is a symlink is refused, a stale temp entry is removed (as a link, never followed) and the temp is opened with create_new, then renamed over the lockfile.
+
+### core/src/slots/consumer.rs · apply keeps what it did not change
+
+- refers-to: core/src/slots/consumer.rs :: apply
+- kind: rationale
+- logged: v0.5.1 · 2026-10-30
+
+A pinned entry is left exactly as it is (only a note is printed). A slot already in the lockfile that apply pulls in as a dependency, without being named, is left as it is. For a named slot, a file whose path and recorded origin hash still match the slot keeps its recorded entry, so a local edit stays `local` or `diverged` instead of becoming the new baseline. A file whose base release was unknown (`originSha256` empty) is recorded again.
+
+### core/src/slots/consumer.rs · hash_in
+
+- refers-to: core/src/slots/consumer.rs :: hash_in
+- kind: rationale
+- logged: v0.5.1 · 2026-10-30
+
+A consumer file is read only when its canonical path is inside the canonical repository path, so a symlinked parent folder pointing outside is treated as absent rather than hashed.
+
+### core/src/slots/copies.rs · order
+
+- refers-to: core/src/slots/copies.rs :: copies
+- kind: explainer
+- logged: v0.5.1 · 2026-10-30
+
+Ties are broken by qualified name, end line and relation after relation rank, score, corpus, path and start line, so the same store always gives the same copies list and the same manifest hash (css.panels-dialogs changed hash on every refresh before). The schema's hash patterns allow the empty string the seeds carry.
