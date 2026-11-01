@@ -4,7 +4,7 @@
   "id": "ui.prefs-dialog",
   "title": "Preferences dialog shell",
   "summary": "SettingsDialog: a modal Preferences dialog with a collapsible left rail of section tabs, one scrolling pane of foldable section cards, a scroll spy and a wire from the active tab. Add a section by registering a name, an icon and groups of rows.",
-  "description": "`SettingsDialog extends Dialog` (frontend/src/ui/app-dialogs.ts) is built once at start, appended to #overlay-root, and shown and hidden, never rebuilt. The constructor defines four closures: `grp(label, ...rows)` makes a titled group card (`section.cv-prefs-group` with `h3.cv-prefs-label`, relabelled on language change), `nt(text)` a note, `cols(...rows)` a responsive grid of rows, and `add(name, ...groups)` registers a section: it builds the rail tab (`button.cv-prefs-railtab`, icon from the `railIcons` map, English name in `data-section`) and the pane card (`section.cv-prefs-page.cv-prefs-sec` with a head button that folds the body), and stores the card in `this.sections`. After all `add` calls a loop re-appends tabs and cards in one fixed order; the `add` call order must equal the display order because the scroll spy treats the last key as the last card. `show(section?, live?)` re-reads the preferences, sets every pre-built row, refreshes async parts, opens the shell and scrolls to the section. `showSection`, `markSection`, `scrollToSection`, `foldSection`, `queueSpy`, `queueWire` and `drawWire` keep rail, pane and the SVG wire in step. `change(patch)` merges a patch into the preferences without overwriting what tool options and dialogs remembered meanwhile, saves, and calls `onPrefs`. Rows come from the control-row builders and from panels/page-prefs.ts (`PagePrefsRows`), built once and patched in place so nothing flashes. The rail collapse is remembered in localStorage (formvis.prefsRailCollapsed) inside try/catch. The stylesheet block is the `cv-prefs-*` selectors in frontend/src/styles/dialogs.css (the dialog frame, rail, tabs, wire, port, cards, groups, notes, the column grid and the row overrides inside the dialog). A port keeps the shell and replaces the section list and the rows; the formvis engine, GPU, generative and plug-in rows are formvis-specific.",
+  "description": "`SettingsDialog extends Dialog` (frontend/src/ui/app-dialogs.ts) is built once at start, appended to #overlay-root, and shown and hidden, never rebuilt. The constructor defines four closures: `grp(label, ...rows)` makes a titled group card (`section.cv-prefs-group` with `h3.cv-prefs-label`, relabelled on language change), `nt(text)` a note, `cols(...rows)` a responsive grid of rows, and `add(name, ...groups)` registers a section: it builds the rail tab (`button.cv-prefs-railtab`, icon from the `railIcons` map, English name in `data-section`) and the pane card (`section.cv-prefs-page.cv-prefs-sec` with a head button that folds the body), and stores the card in `this.sections`. After all `add` calls a loop re-appends tabs and cards in one fixed order; the `add` call order must equal the display order because the scroll spy treats the last key as the last card. `show(section?, live?)` re-reads the preferences, sets every pre-built row, refreshes async parts, opens the shell and scrolls to the section. `showSection`, `markSection`, `scrollToSection`, `foldSection`, `queueSpy`, `queueWire` and `drawWire` keep rail, pane and the SVG wire in step. `change(patch)` merges a patch into the preferences without overwriting what tool options and dialogs remembered meanwhile, saves, and calls `onPrefs`. Rows come from the control-row builders and from the page rows in panels/page-prefs.ts (`PagePrefsRows`, its own module and not part of this slot, since its colour row is a twin of `ui.control-rows`), built once and patched in place so nothing flashes. The rail collapse is remembered in localStorage (formvis.prefsRailCollapsed) inside try/catch. The stylesheet block is the `cv-prefs-*` selectors in frontend/src/styles/dialogs.css (the dialog frame, rail, tabs, wire, port, cards, groups, notes, the column grid and the row overrides inside the dialog). A port keeps the shell and replaces the section list and the rows; the formvis engine, GPU, generative and plug-in rows are formvis-specific.",
   "kind": "component",
   "layer": "frontend",
   "tags": [
@@ -48,12 +48,6 @@
         "symbol": "SettingsDialog.setEngine",
         "signature": "setEngine(text: string): void",
         "doc": "Patches the engine status note in place."
-      },
-      {
-        "file": "frontend/src/ui/panels/page-prefs.ts",
-        "symbol": "PagePrefsRows",
-        "signature": "export class PagePrefsRows",
-        "doc": "The rows of the small preference pages (Cursors, Transparency and Gamut, Units and Rulers, Type, Enhanced Controls, Plug-ins), built once and filled by set when the dialog opens."
       }
     ],
     "commands": [
@@ -97,16 +91,6 @@
         "section list and railIcons map",
         "formvis.prefsRailCollapsed storage key",
         "engine, GPU, generative and plug-in rows"
-      ]
-    },
-    {
-      "path": "frontend/src/ui/panels/page-prefs.ts",
-      "role": "source",
-      "sha256": "",
-      "lines": 0,
-      "port": "adapt",
-      "renameables": [
-        "page row list"
       ]
     },
     {
