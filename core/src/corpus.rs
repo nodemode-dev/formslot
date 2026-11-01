@@ -583,14 +583,23 @@ fn index(
     let top = repo.toplevel().to_string_lossy().to_string();
     let listing = repo.ls_tree(&commit)?;
     let ctx = select::Context::from_paths(listing.iter().map(|e| e.path.as_str()));
-    let prior_head = existing
-        .as_ref()
-        .filter(|c| c.object_format == format)
-        .and_then(|c| c.head.clone());
+    let tx = store
+        .conn_mut()
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(sql)?;
+    let prior_head = match &existing {
+        Some(c) => tx
+            .query_row("SELECT head, object_format FROM corpus WHERE id = ?1", params![c.id], |row| {
+                Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?))
+            })
+            .ok()
+            .filter(|(_, stored)| stored.as_deref() == Some(format.as_str()))
+            .and_then(|(head, _)| head),
+        None => None,
+    };
     let (touched, removals) = plan(repo, prior_head.as_deref(), &commit);
     let now = now_iso();
 
-    let tx = store.conn_mut().transaction().map_err(sql)?;
     let corpus_id = match &existing {
         Some(c) => c.id,
         None => {
@@ -610,10 +619,19 @@ fn index(
             if !set.contains(&entry.path) {
                 if select::skip_read(&entry.path, &ctx) || entry.size > MAX_READ {
                     counters.skipped += 1;
-                } else {
-                    counters.reused += 1;
+                    continue;
                 }
-                continue;
+                let stored: bool = tx
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM blob WHERE object_format = ?1 AND oid = ?2)",
+                        params![format, entry.oid],
+                        |row| row.get(0),
+                    )
+                    .map_err(sql)?;
+                if stored {
+                    counters.reused += 1;
+                    continue;
+                }
             }
         }
         process_entry(
