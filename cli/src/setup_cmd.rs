@@ -388,6 +388,7 @@ impl Setup {
                     }
                     match placed {
                         Ok(dest) => {
+                            engine::note_placed(&dest);
                             self.ui.tag("done", &format!("copied to {}", engine::shown(&dest)));
                             self.done.push(format!("copied formslot to {}", engine::shown(&dest)));
                             self.bin = dest;
@@ -481,10 +482,19 @@ impl Setup {
             self.skipped.push("adding the formslot folder to your PATH".into());
             return;
         }
-        let ok = critical(|| Command::new("powershell").args(["-NoProfile", "-Command", &script]).status().map(|s| s.success()).unwrap_or(false));
-        if ok {
-            self.ui.tag("done", &format!("your user PATH now lists it (when it had to be changed, the old value is saved in {}). Open a new terminal window for it to take effect.", engine::shown(&backup)));
+        let out = critical(|| Command::new("powershell").args(["-NoProfile", "-Command", &script]).output());
+        let (ok, text) = match out {
+            Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stdout).to_string()),
+            Err(_) => (false, String::new()),
+        };
+        let word = text.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string();
+        if ok && word == "added" {
+            self.ui.tag("done", &format!("your user PATH now lists it (the old value is saved in {}). Open a new terminal window for it to take effect.", engine::shown(&backup)));
             self.done.push("added the formslot folder to your PATH".into());
+            self.path_ok = true;
+        } else if ok && word == "present" {
+            self.ui.tag("done", "your user PATH already lists it");
+            self.kept.push("your user PATH already lists the formslot folder".into());
             self.path_ok = true;
         } else {
             self.ui.tag("problem", "PowerShell did not accept it");
@@ -809,6 +819,13 @@ fn service_line(bin: &Path) -> Option<String> {
     ok.then(|| first_line(&text))
 }
 
+fn live_pid() -> Option<u32> {
+    if !config::data_dir_path().join("service.json").exists() {
+        return None;
+    }
+    formslot_core::discovery::read().ok().flatten().map(|i| i.pid).filter(|p| formslot_core::discovery::pid_alive(*p))
+}
+
 fn path_files() -> Vec<PathBuf> {
     engine::rc_marked()
 }
@@ -987,11 +1004,12 @@ impl Remove {
 
     fn step_service(&mut self) {
         self.ui.heading(2, "Stop formslot", "the small helper that runs on this computer only.");
-        let Some(line) = service_line(&self.bin) else {
+        let Some(pid) = live_pid() else {
             self.ui.tag("done", "the service is not running");
             self.gone.push("the service was already stopped".into());
             return;
         };
+        let line = service_line(&self.bin).unwrap_or_else(|| format!("a service is running (pid {pid})"));
         self.ui.say(&line);
         if self.opts.dry {
             self.ui.tag("would", "stop the service");
@@ -1075,10 +1093,18 @@ impl Remove {
         let backup = engine::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(format!("formslot-user-path-backup-{stamp}.txt"));
         let script = engine::windows_path_remove_script(&dir, &backup);
         let out = critical(|| Command::new("powershell").args(["-NoProfile", "-Command", &script]).output());
-        match out {
-            Ok(o) if o.status.success() => {
+        let word = match &out {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string(),
+            _ => String::new(),
+        };
+        match word.as_str() {
+            "removed" => {
                 self.ui.tag("done", &format!("removed from your user PATH (the old value is saved in {}). Open a new terminal window for it to take effect.", engine::shown(&backup)));
                 self.done.push("removed the formslot folder from your PATH".into());
+            }
+            "absent" => {
+                self.ui.tag("done", "your user PATH did not list the formslot folder");
+                self.gone.push("no PATH entry".into());
             }
             _ => {
                 self.ui.tag("problem", "PowerShell did not accept it");
@@ -1101,10 +1127,29 @@ impl Remove {
             return;
         }
         if self.opts.dry {
-            self.ui.tag("would", &format!("delete {}", engine::shown(&target)));
+            if engine::placed_by_setup(&dir) {
+                self.ui.tag("would", &format!("delete {}", engine::shown(&target)));
+            } else {
+                self.ui.tag("would", &format!("ask before deleting {}: setup did not place it (--yes would leave it)", engine::shown(&target)));
+            }
             return;
         }
-        if !self.ui.confirm(&format!("Delete {}?", engine::shown(&target)), true) {
+        if let Some(pid) = live_pid() {
+            self.ui.tag("problem", &format!("the service is still running (pid {pid}); on Windows the program cannot be deleted while it runs"));
+        }
+        if !engine::placed_by_setup(&dir) {
+            self.ui.say(&format!("WARNING: {} is not the copy setup placed (it differs from this program and setup did not record it). It may be a different program with the same name.", engine::shown(&target)));
+            if self.opts.yes {
+                self.ui.tag("skipped", "--yes never deletes a program setup did not place");
+                self.kept.push(format!("{} (not placed by setup)", engine::shown(&target)));
+                return;
+            }
+            if !self.ui.confirm(&format!("Delete {} anyway?", engine::shown(&target)), false) {
+                self.ui.tag("skipped", "left in place");
+                self.kept.push(format!("{} (not placed by setup)", engine::shown(&target)));
+                return;
+            }
+        } else if !self.ui.confirm(&format!("Delete {}?", engine::shown(&target)), true) {
             self.ui.tag("skipped", "left in place");
             self.kept.push(format!("the program in {}", engine::shown(&dir)));
             return;
@@ -1157,16 +1202,22 @@ impl Remove {
             self.kept.push(format!("the data folder {}", engine::shown(&data)));
             return;
         }
-        if service_line(&self.bin).is_some() {
-            self.ui.tag("problem", "the service is still running, so the data folder was not deleted; stop it and run this again");
+        if let Some(pid) = live_pid() {
+            self.ui.tag("problem", &format!("the service is still running (pid {pid}), so the data folder was not deleted; stop it and run this again"));
             self.kept.push(format!("the data folder {}", engine::shown(&data)));
             self.failed = true;
             return;
         }
         match critical(|| engine::remove_data_dir(&data)) {
-            Ok(()) => {
+            Ok(left) if left.is_empty() => {
                 self.ui.tag("done", &format!("deleted {}", engine::shown(&data)));
                 self.done.push("deleted the data folder".into());
+            }
+            Ok(left) => {
+                self.ui.tag("done", &format!("deleted formslot's own files in {}", engine::shown(&data)));
+                self.ui.say(&format!("Left in place because formslot did not create them: {}", left.join(", ")));
+                self.done.push("deleted formslot's files from the data folder".into());
+                self.kept.push(format!("{} in {}", left.join(", "), engine::shown(&data)));
             }
             Err(e) => {
                 self.ui.tag("problem", &e);

@@ -22,11 +22,12 @@ const PROMPT_CHARS: usize = 2800;
 const RULES_CHARS: usize = 2400;
 const REINDEX_GAP: u64 = 20;
 const STATE_DAYS: u64 = 3;
-const STATE_READ_CAP: u64 = 262_144;
+const STATE_READ_CAP: u64 = 1_048_576;
 const WARNS_CAP: usize = 64;
 const WRITTEN_CAP: usize = 200;
 const AUDITED_CAP: usize = 200;
 const KEY_CAP: usize = 400;
+const PATH_CAP: usize = 4096;
 const AUDIT_FILES: usize = 20;
 const AUDIT_LINES: usize = 5;
 const FILE_CAP: u64 = 400_000;
@@ -47,8 +48,16 @@ struct State {
     audited: Vec<String>,
 }
 
+fn fold(key: String) -> String {
+    if key.len() <= KEY_CAP {
+        return key;
+    }
+    let sum = <sha2::Sha256 as sha2::Digest>::digest(key.as_bytes());
+    format!("h:{}", sum.iter().take(16).map(|b| format!("{b:02x}")).collect::<String>())
+}
+
 fn keep_last(list: &mut Vec<String>, cap: usize) {
-    list.retain(|k| k.len() <= KEY_CAP);
+    list.retain(|k| k.len() <= PATH_CAP);
     if list.len() > cap {
         list.drain(..list.len() - cap);
     }
@@ -233,12 +242,12 @@ pub fn run_check(stdin: &str, arg_mode: Option<&str>) -> Option<String> {
         let Some(conn) = open()? else { return Ok(None) };
         let mut verdict = check::evaluate(&conn, &req, mode, started)?;
         if let Verdict::Warn { slots, .. } = &verdict {
-            let key = format!(
+            let key = fold(format!(
                 "{}|{}|{}",
                 req.path,
                 slots.first().map(|s| s.id.as_str()).unwrap_or("unit"),
                 input_digest(&value)
-            );
+            ));
             let seen = update(&req.session, |state| {
                 if let Some(at) = state.warns.iter().position(|k| *k == key) {
                     let k = state.warns.remove(at);
@@ -520,7 +529,7 @@ fn stop_audit(conn: &Connection, target: &Target, session: &str) -> crate::Resul
                 })
                 .map_err(|e| format!("audit: {e}"))?;
             if let Some(Ok((path, qualified, line, exact))) = rows.into_iter().next() {
-                let key = format!("{rel}|{}|{path}", unit.qualified);
+                let key = fold(format!("{rel}|{}|{path}", unit.qualified));
                 if seen.insert(key.clone()) {
                     fresh.push(key);
                     lines.push(format!(

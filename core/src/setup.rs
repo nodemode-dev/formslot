@@ -390,17 +390,19 @@ pub fn windows_path_script(dir: &Path, backup: &Path) -> String {
     let d = dir.to_string_lossy().replace('\'', "''");
     let b = backup.to_string_lossy().replace('\'', "''");
     format!(
-        "$d='{d}'; $b='{b}'; \
+        "$ErrorActionPreference='Stop'; $d='{d}'; $b='{b}'; \
 $k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); \
-$p=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $k.Close(); \
+$p=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); \
+try {{ $kind=$k.GetValueKind('Path') }} catch {{ $kind=[Microsoft.Win32.RegistryValueKind]::ExpandString }}; $k.Close(); \
 if (($p -split ';') -notcontains $d) {{ \
 Write-Host ('Your user Path was: ' + $p); \
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $b) | Out-Null; \
 Set-Content -LiteralPath $b -Value $p -Encoding UTF8; \
+if (-not (Test-Path -LiteralPath $b)) {{ throw 'the backup was not written' }}; \
 Write-Host ('Saved a copy in ' + $b); \
 $w=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); \
-$w.SetValue('Path',(($p.TrimEnd(';') + ';' + $d).TrimStart(';')),[Microsoft.Win32.RegistryValueKind]::ExpandString); $w.Close(); \
-[Environment]::SetEnvironmentVariable('FORMSLOT_PATH_NOTIFY',$null,'User') }}"
+$w.SetValue('Path',(($p.TrimEnd(';') + ';' + $d).TrimStart(';')),$kind); $w.Close(); \
+[Environment]::SetEnvironmentVariable('FORMSLOT_PATH_NOTIFY',$null,'User'); Write-Output 'added' }} else {{ Write-Output 'present' }}"
     )
 }
 
@@ -495,6 +497,8 @@ pub struct RcRemoval {
 }
 
 pub fn remove_rc_block(file: &Path, dry_run: bool) -> crate::Result<RcRemoval> {
+    let resolved = fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let file = resolved.as_path();
     let bytes = match fs::read(file) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(RcRemoval { removed: 0, backup: None }),
@@ -550,19 +554,35 @@ pub fn windows_path_remove_script(dir: &Path, backup: &Path) -> String {
     let d = dir.to_string_lossy().replace('\'', "''");
     let b = backup.to_string_lossy().replace('\'', "''");
     format!(
-        "$d='{d}'.TrimEnd('\\'); $b='{b}'; \
+        "$ErrorActionPreference='Stop'; $d='{d}'.TrimEnd('\\'); $b='{b}'; \
 $k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); \
-$p=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $k.Close(); \
+$p=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); \
+try {{ $kind=$k.GetValueKind('Path') }} catch {{ $kind=[Microsoft.Win32.RegistryValueKind]::ExpandString }}; $k.Close(); \
 $parts=@($p -split ';'); \
 $keep=@($parts | Where-Object {{ $_.Trim().TrimEnd('\\') -ne $d }}); \
 if ($keep.Count -ne $parts.Count) {{ \
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $b) | Out-Null; \
 Set-Content -LiteralPath $b -Value $p -Encoding UTF8; \
+if (-not (Test-Path -LiteralPath $b)) {{ throw 'the backup was not written' }}; \
 Write-Host ('Saved a copy of your user Path in ' + $b); \
 $w=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); \
-$w.SetValue('Path',($keep -join ';'),[Microsoft.Win32.RegistryValueKind]::ExpandString); $w.Close(); \
+$w.SetValue('Path',($keep -join ';'),$kind); $w.Close(); \
 [Environment]::SetEnvironmentVariable('FORMSLOT_PATH_NOTIFY',$null,'User'); Write-Output 'removed' }} else {{ Write-Output 'absent' }}"
     )
+}
+
+pub const PLACED_MARKER: &str = "placed-binary.txt";
+
+pub fn note_placed(dest: &Path) {
+    let _ = fs::write(crate::config::data_dir().join(PLACED_MARKER), dest.to_string_lossy().as_bytes());
+}
+
+pub fn placed_by_setup(dir: &Path) -> bool {
+    let target = dir.join(binary_name());
+    let marked = fs::read_to_string(crate::config::data_dir_path().join(PLACED_MARKER))
+        .map(|t| Path::new(t.trim()) == target.as_path())
+        .unwrap_or(false);
+    marked || env::current_exe().map(|me| same_bytes(&me, &target)).unwrap_or(false)
 }
 
 pub fn remove_binary(dir: &Path) -> crate::Result<bool> {
@@ -592,17 +612,49 @@ pub fn data_dir_refusal(dir: &Path) -> Option<String> {
     if fs::symlink_metadata(dir).is_ok_and(|m| m.file_type().is_symlink()) {
         return Some(format!("{} is a link, so it is not deleted", dir.display()));
     }
-    let ours = ["corpus.sqlite", "service.json", "formslot.log", "bin"].iter().any(|n| dir.join(n).exists());
+    let regular = |n: &str| fs::symlink_metadata(dir.join(n)).is_ok_and(|m| m.file_type().is_file());
     let empty = fs::read_dir(dir).map(|mut d| d.next().is_none()).unwrap_or(false);
-    if !ours && !empty {
-        return Some(format!("{} does not look like a formslot data folder (no corpus.sqlite), so it is not deleted", dir.display()));
+    if !regular("corpus.sqlite") && !regular("service.json") && !empty {
+        return Some(format!("{} does not look like a formslot data folder (no corpus.sqlite or service.json), so it is not deleted", dir.display()));
     }
     None
 }
 
-pub fn remove_data_dir(dir: &Path) -> crate::Result<()> {
+fn known_data_entry(name: &str, is_dir: bool) -> bool {
+    if is_dir {
+        return matches!(name, "hooks" | "dense" | "model-eval");
+    }
+    matches!(
+        name,
+        "corpus.sqlite" | "corpus.sqlite-wal" | "corpus.sqlite-shm" | "corpus.sqlite-journal" | "service.json" | "service.lock" | "declines.json" | "formslot.log"
+    ) || name == PLACED_MARKER
+        || name.starts_with("formslot.log.")
+        || (name.starts_with("user-path-backup-") && name.ends_with(".txt"))
+}
+
+pub fn remove_data_dir(dir: &Path) -> crate::Result<Vec<String>> {
     if let Some(why) = data_dir_refusal(dir) {
         return Err(why);
     }
-    fs::remove_dir_all(dir).map_err(|e| format!("cannot delete {}: {e}", dir.display()))
+    let mut left: Vec<String> = Vec::new();
+    let entries = fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
+        let Ok(meta) = fs::symlink_metadata(&path) else { continue };
+        let kind = meta.file_type();
+        let ok = if kind.is_dir() {
+            known_data_entry(&name, true) && fs::remove_dir_all(&path).is_ok()
+        } else {
+            known_data_entry(&name, false) && (fs::remove_file(&path).is_ok() || fs::remove_dir(&path).is_ok())
+        };
+        if !ok {
+            left.push(name);
+        }
+    }
+    left.sort();
+    if left.is_empty() {
+        fs::remove_dir(dir).map_err(|e| format!("cannot delete {}: {e}", dir.display()))?;
+    }
+    Ok(left)
 }

@@ -194,8 +194,30 @@ pub fn sha256_hex(text: &str) -> String {
     Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
 
+const MAP_CACHE_ENTRIES: usize = 4;
+
+type MapKey = (String, i64, String, String, i64, i64);
+
 thread_local! {
-    static MAP_BODY: std::cell::RefCell<HashMap<(i64, i64, i64), String>> = std::cell::RefCell::new(HashMap::new());
+    static MAP_BODY: std::cell::RefCell<Vec<(MapKey, String)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn map_key(conn: &Connection, corpus_id: i64) -> Option<MapKey> {
+    let path = conn.path().map(str::to_string).filter(|p| !p.is_empty())?;
+    let (head, indexed) = conn
+        .query_row(
+            "SELECT COALESCE(head, ''), COALESCE(indexed_at, '') FROM corpus WHERE id = ?1",
+            params![corpus_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+        .ok()?;
+    let units: i64 = conn
+        .query_row("SELECT COUNT(*) FROM search_unit WHERE corpus_id = ?1", params![corpus_id], |r| r.get(0))
+        .ok()?;
+    let edges: i64 = conn
+        .query_row("SELECT COUNT(*) FROM edge WHERE corpus_id = ?1", params![corpus_id], |r| r.get(0))
+        .ok()?;
+    Some((path, corpus_id, head, indexed, units, edges))
 }
 
 fn build_p0(conn: &Connection, target: &Target) -> crate::Result<(Part, Vec<i64>)> {
@@ -241,14 +263,24 @@ fn build_p0(conn: &Connection, target: &Target) -> crate::Result<(Part, Vec<i64>
         p.push("- none recorded\n", Kind::Prose);
     }
     p.push("\n## Repo map\n", Kind::Prose);
-    let stamp = (target.id, conn.total_changes() as i64, conn.query_row("PRAGMA data_version", [], |r| r.get::<_, i64>(0)).unwrap_or(-1));
-    let cached = MAP_BODY.with(|c| c.borrow().get(&stamp).cloned());
+    let key = map_key(conn, target.id);
+    let cached = key
+        .as_ref()
+        .and_then(|k| MAP_BODY.with(|c| c.borrow().iter().find(|e| e.0 == *k).map(|e| e.1.clone())));
     let body = match cached {
         Some(body) => body,
         None => {
             let ranked = map::rank_entries(conn, target.id)?;
             let (_, body) = map::fit(&ranked.entries, P0_MAP_TOKENS, usize::MAX);
-            MAP_BODY.with(|c| c.borrow_mut().insert(stamp, body.clone()));
+            if let Some(k) = key {
+                MAP_BODY.with(|c| {
+                    let mut list = c.borrow_mut();
+                    list.push((k, body.clone()));
+                    if list.len() > MAP_CACHE_ENTRIES {
+                        list.remove(0);
+                    }
+                });
+            }
             body
         }
     };
@@ -299,18 +331,16 @@ fn unit_text(conn: &Connection, corpus_id: i64, hit: &Hit) -> Option<UnitText> {
              WHERE s.corpus_id = ?1 AND s.path = ?2 AND s.qualified = ?3 ORDER BY s.idx LIMIT 1",
         )
         .ok()?;
-    let found = stmt
-        .query_row(params![corpus_id, hit.path, hit.qualified], |r| {
-            Ok(UnitText {
-                oid: r.get(0)?,
-                start_byte: r.get::<_, i64>(1)? as usize,
-                end_byte: r.get::<_, i64>(2)? as usize,
-                start_line: r.get(3)?,
-                licence: r.get(4)?,
-            })
+    stmt.query_row(params![corpus_id, hit.path, hit.qualified], |r| {
+        Ok(UnitText {
+            oid: r.get(0)?,
+            start_byte: r.get::<_, i64>(1)? as usize,
+            end_byte: r.get::<_, i64>(2)? as usize,
+            start_line: r.get(3)?,
+            licence: r.get(4)?,
         })
-        .ok();
-    found
+    })
+    .ok()
 }
 
 fn envelope(target: &Target, path: &str, lines: [i64; 2], slot: Option<String>, licence: &str, text: String) -> Excerpt {
@@ -571,7 +601,7 @@ pub fn build_with(
         }
     }
     let p2_tokens = p2.tokens();
-    let sent =p0_sent + p1_sent + p2_tokens;
+    let sent = p0_sent + p1_sent + p2_tokens;
 
     let mut prompt = String::new();
     if tier.with_prefix() {
@@ -583,7 +613,7 @@ pub fn build_with(
     prompt.push_str(&p2.text);
 
     let p0_hash = sha256_hex(&p0.text);
-    let part =|included: bool, p: &Part| PartOut {
+    let part = |included: bool, p: &Part| PartOut {
         included,
         tokens: p.tokens(),
         sha256: sha256_hex(&p.text),

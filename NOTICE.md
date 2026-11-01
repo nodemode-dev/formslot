@@ -77,7 +77,7 @@ curl is found on the system and run as a separate program by `dense fetch`; it i
 
 ## Derived from formMCP
 
-The files `core/src/http.rs`, `core/src/log.rs`, `core/src/redact.rs` and the root launcher scripts (`formslot`, `formslot.bat`, `formslot_oc_install`, `formslot_oc_install.bat`) come from formMCP (`nodemode-dev/formMCP`), GPL-3.0-only, the same owner.
+The files `core/src/http.rs`, `core/src/log.rs`, `core/src/redact.rs` and the root launcher scripts (`formslot`, `formslot.bat`, `formslot_oc_install`, `formslot_oc_install.bat`) come from formMCP (`nodemode-ai/formMCP`), GPL-3.0-only, the same owner.
 
 ## Found on the system, never bundled
 

@@ -261,14 +261,17 @@ pub struct Renamed {
 
 pub fn rename(store: &mut Store, old: &str, new: &str) -> crate::Result<Renamed> {
     check_name(new)?;
-    let found = find(store.conn(), old)?;
+    let tx = store
+        .conn_mut()
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(sql)?;
+    let found = find(&tx, old)?;
     if found.name == new {
         return Err(format!("the corpus is already named {new}"));
     }
-    if name_taken(store.conn(), new)? {
+    if name_taken(&tx, new)? {
         return Err(format!("a corpus named {new} already exists; choose another name"));
     }
-    let tx = store.conn_mut().transaction().map_err(sql)?;
     tx.execute("UPDATE corpus SET name = ?1 WHERE id = ?2", params![new, found.id])
         .map_err(sql)?;
     let rows: Vec<(String, String)> = {
