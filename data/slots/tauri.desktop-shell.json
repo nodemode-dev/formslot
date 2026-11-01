@@ -1,0 +1,465 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "tauri.desktop-shell",
+  "title": "Tauri desktop shell",
+  "summary": "Tauri 2 shell for a sidecar-engine app: engine start/stop, OS file-open queue, single instance, update check/install, system fonts, display server and graphics backend, zoom, traffic lights, splash reveal, native renderer bridge. 26 commands.",
+  "description": "Command handlers are registered in `main.rs` `generate_handler!`; plugins are shell, dialog, updater and single-instance. The engine runs as a packaged sidecar (`packaged.rs` finds the folder) and is stopped on the Exit event; launch arguments `--command <id>`, `--action <name>` and `--script <file>` are queued as runs for the page (`take_pending_runs`, `take_pending_opens`). B06 counts 23 commands; the source registers 26 because the nine `native_*` commands belong to the native renderer bridge (`native.rs`, which depends on the formvis-render crate, B06 row 35, not seeded). `main.rs` derives from the tauri-compiler-skill sidecar shell template (MIT, NOTICE.md). Frontend callers use `@tauri-apps/api` `invoke`.",
+  "kind": "tauri-command",
+  "layer": "shell",
+  "tags": [
+    "tauri",
+    "desktop",
+    "sidecar",
+    "updater",
+    "window",
+    "fonts"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "src-tauri/src/main.rs",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [],
+    "commands": [
+      {
+        "name": "take_pending_runs",
+        "args": "queue: tauri::State<OpenQueue>",
+        "returns": "Vec<LaunchRun>",
+        "doc": "The runs that arrived before the page was ready; the page asks after it has opened the waiting files.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "take_pending_opens",
+        "args": "queue: tauri::State<OpenQueue>",
+        "returns": "Vec<String>",
+        "doc": "The page registers its listeners and then asks for the files that arrived before it was ready.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "confirm_exit",
+        "args": "app: tauri::AppHandle, cancel: Option<bool>",
+        "returns": "()",
+        "doc": "The page has saved or discarded every unsaved document: the app may exit now. The engine is stopped by the Exit event.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "check_for_update",
+        "args": "app: tauri::AppHandle",
+        "returns": "UpdateReport",
+        "doc": "Help > Check for Updates: asks the update endpoints and says what it found, or why it cannot ask.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "install_update",
+        "args": "app: tauri::AppHandle",
+        "returns": "Result<(), String>",
+        "doc": "Downloads and installs the update the last check found, stops the engine and restarts the app. The page settles unsaved documents first.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "system_fonts",
+        "args": "",
+        "returns": "Vec<String>",
+        "doc": "The font families installed on this computer, sorted and without duplicates, for the Type tool's font list.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "system_fonts_english",
+        "args": "",
+        "returns": "Vec<String>",
+        "doc": "The same list under each font's English family name (Preferences > Type > Show Font Names in English); a font with no English name keeps its first one.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "note_recent_document",
+        "args": "app: tauri::AppHandle, path: String",
+        "returns": "()",
+        "doc": "Adds a file the person opened or saved to the system's recent documents (the desktop's recent list, the taskbar jump list, the Dock menu). A path that is not a file is ignored; the page calls it from its own recent list.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "pick_image_path",
+        "args": "app: tauri::AppHandle",
+        "returns": "Result<Option<String>, String>",
+        "doc": "The native open dialog for a linked smart object's file (33.2): returns the file's real disk path, which the web view never learns from a picked File. None when the dialog is cancelled.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "file_dialog_report",
+        "args": "",
+        "returns": "String",
+        "doc": "The page asks for the report when a file dialog has not come back for a while.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "set_display_server",
+        "args": "server: String",
+        "returns": "Result<(), String>",
+        "doc": "Keeps the display server choice for the next launch; other systems have nothing to set and accept it.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "set_graphics_backend",
+        "args": "backend: String",
+        "returns": "Result<(), String>",
+        "doc": "Keeps the native renderer's graphics API (auto, vulkan, gl, metal or dx12) for the next launch.",
+        "file": "src-tauri/src/main.rs"
+      },
+      {
+        "name": "native_start",
+        "args": "window: tauri::WebviewWindow, state: tauri::State<NativeState>",
+        "returns": "Result<String, String>",
+        "doc": "Starts the native canvas in this window; returns the adapter's name and backend.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "native_stop",
+        "args": "state: tauri::State<NativeState>",
+        "returns": "()",
+        "doc": "Stops the native canvas and drops its state.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "native_doc",
+        "args": "width: u32, height: u32, state: tauri::State<NativeState>",
+        "returns": "Result<(), String>",
+        "doc": "A new document of this size: the mirror starts empty.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "native_put",
+        "args": "request: tauri::ipc::Request, state: tauri::State<NativeState>",
+        "returns": "Result<(), String>",
+        "doc": "Pixels for a layer, as raw bytes (straight RGBA8, w by h at x, y in the layer's own lw by lh pixels); the id and geometry come as headers (x-id, x-lw, x-lh, x-x, x-y, x-w, x-h), so large images are not expanded into JSON.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "native_table",
+        "args": "id: String, red: Vec<u8>, green: Vec<u8>, blue: Vec<u8>, state: tauri::State<NativeState>",
+        "returns": "Result<(), String>",
+        "doc": "An adjustment's table: 256 values for each of red, green and blue.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "native_table3",
+        "args": "request: tauri::ipc::Request, state: tauri::State<NativeState>",
+        "returns": "Result<(), String>",
+        "doc": "An adjustment's 3D table as raw bytes: 52 by 52 by 52 nodes of straight RGBA8; the id comes as the header x-id.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "native_stack",
+        "args": "stack: Vec<SpecIn>, state: tauri::State<NativeState>",
+        "returns": "Result<(), String>",
+        "doc": "Replaces the stack of layer specs the native document composites.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "native_remove",
+        "args": "id: String, state: tauri::State<NativeState>",
+        "returns": "Result<(), String>",
+        "doc": "Removes an uploaded surface or table from the native document by id.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "native_present",
+        "args": "pan_x: f32, pan_y: f32, zoom: f32, checker_a: [f32; 3], checker_b: [f32; 3], checker_cell: f32, window: tauri::WebviewWindow, state: tauri::State<NativeState>",
+        "returns": "Result<bool, String>",
+        "doc": "Draws the document at this pan and zoom (window pixels), over the checkerboard (colours 0 to 1, cell in window pixels), at the window's current size; true when the frame was shown.",
+        "file": "src-tauri/src/native.rs"
+      },
+      {
+        "name": "ui_zoom",
+        "args": "window: tauri::WebviewWindow, memory: tauri::State<Memory>, factor: Option<f64>",
+        "returns": "Result<f64, String>",
+        "doc": "Preferences > Interface > Interface Scale for the desktop window: the page asks for a factor and the web view is zoomed to it, kept for the next launch; with no factor it only reads the zoom in effect.",
+        "file": "src-tauri/src/window_state.rs"
+      },
+      {
+        "name": "display_profile",
+        "args": "window: tauri::WebviewWindow",
+        "returns": "DisplayProfile",
+        "doc": "The monitor ICC profile for the window: available, source, ICC data as text, byte size, a note and the monitor index.",
+        "file": "src-tauri/src/display.rs"
+      },
+      {
+        "name": "text_edit",
+        "args": "window: tauri::Window<R>, action: String",
+        "returns": "Result<(), String>",
+        "doc": "macOS: sends undo, redo, cut, copy, paste or select-all to the focused web view field; other systems accept and do nothing.",
+        "file": "src-tauri/src/text_edit.rs"
+      },
+      {
+        "name": "set_window_title",
+        "args": "window: Window<R>, title: String",
+        "returns": "()",
+        "doc": "The page's title for the window: set, then the lights placed again, since AppKit lays the title bar out anew.",
+        "file": "src-tauri/src/traffic_lights.rs"
+      },
+      {
+        "name": "app_ready",
+        "args": "app: tauri::AppHandle<R>",
+        "returns": "()",
+        "doc": "The page's first content is painted (dom.ts revealApp).",
+        "file": "src-tauri/src/reveal.rs"
+      }
+    ],
+    "routes": [],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "src-tauri/src/main.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "productName and identifier",
+        "sidecar engine name",
+        "single-instance id"
+      ]
+    },
+    {
+      "path": "src-tauri/src/native.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": []
+    },
+    {
+      "path": "src-tauri/src/window_state.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": []
+    },
+    {
+      "path": "src-tauri/src/display.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": []
+    },
+    {
+      "path": "src-tauri/src/packaged.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": []
+    },
+    {
+      "path": "src-tauri/src/integration.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": []
+    },
+    {
+      "path": "src-tauri/src/reveal.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": []
+    },
+    {
+      "path": "src-tauri/src/traffic_lights.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": []
+    },
+    {
+      "path": "src-tauri/src/text_edit.rs",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": []
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "package name",
+        "formvis-render path"
+      ]
+    },
+    {
+      "path": "src-tauri/tauri.conf.json",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "productName",
+        "identifier",
+        "updater endpoint"
+      ]
+    },
+    {
+      "path": "src-tauri/capabilities/default.json",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [],
+    "npm": [],
+    "python": [],
+    "cargo": [
+      {
+        "name": "tauri",
+        "range": "2"
+      },
+      {
+        "name": "tauri-plugin-shell",
+        "range": "2"
+      },
+      {
+        "name": "tauri-plugin-dialog",
+        "range": "2"
+      },
+      {
+        "name": "tauri-plugin-updater",
+        "range": "2"
+      },
+      {
+        "name": "tauri-plugin-single-instance",
+        "range": "2"
+      },
+      {
+        "name": "regex",
+        "range": "1"
+      },
+      {
+        "name": "serde",
+        "range": "1"
+      },
+      {
+        "name": "serde_json",
+        "range": "1"
+      },
+      {
+        "name": "fontdb",
+        "range": "0.24"
+      },
+      {
+        "name": "formvis-render",
+        "range": "path ../native/formvis-render"
+      },
+      {
+        "name": "x11-dl",
+        "range": "2 (linux)"
+      },
+      {
+        "name": "webkit2gtk",
+        "range": "2 (linux)"
+      },
+      {
+        "name": "gtk",
+        "range": "0.18 (linux)"
+      },
+      {
+        "name": "windows-sys",
+        "range": "0.61 (windows)"
+      },
+      {
+        "name": "objc2",
+        "range": "0.6 (macos)"
+      },
+      {
+        "name": "objc2-app-kit",
+        "range": "0.3 (macos)"
+      },
+      {
+        "name": "objc2-foundation",
+        "range": "0.3 (macos)"
+      }
+    ],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "register-and-permit",
+      "text": "A new command is added to generate_handler! in main.rs, and a plugin API it uses is permitted in capabilities/default.json.",
+      "severity": "should"
+    },
+    {
+      "id": "page-asks-for-queue",
+      "text": "Files and runs that arrive before the page is ready wait in the queue until the page calls take_pending_opens and take_pending_runs; nothing is dropped.",
+      "severity": "must"
+    },
+    {
+      "id": "exit-gated-by-page",
+      "text": "Quit and close are handed to the page until it has settled unsaved documents and called confirm_exit.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [
+    {
+      "spdx": "MIT",
+      "name": "Tauri sidecar shell template (tauri-compiler-skill)",
+      "url": "",
+      "files": [
+        "src-tauri/src/main.rs"
+      ]
+    },
+    {
+      "spdx": "MIT",
+      "name": "fontdb",
+      "url": "",
+      "files": [
+        "src-tauri/src/main.rs"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "title": "Handler registration",
+      "language": "rust",
+      "snippet": ".invoke_handler(tauri::generate_handler![\n    take_pending_opens,\n    take_pending_runs,\n    confirm_exit,\n    check_for_update,\n    install_update,\n    set_display_server,\n    set_graphics_backend,\n    system_fonts,\n    system_fonts_english,\n    pick_image_path,\n    file_dialog_report,\n    note_recent_document,",
+      "whenToUse": "Add a command name to this list when adding a #[tauri::command] fn."
+    },
+    {
+      "title": "Call a command from the page",
+      "language": "ts",
+      "snippet": "if ('__TAURI_INTERNALS__' in window) void import('@tauri-apps/api/core').then((m) => m.invoke('set_window_title', { title })).catch(() => undefined);",
+      "whenToUse": "Frontend side of a shell command, guarded by the Tauri global check."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 34
+  }
+}

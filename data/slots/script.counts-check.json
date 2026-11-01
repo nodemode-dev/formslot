@@ -1,0 +1,206 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "script.counts-check",
+  "title": "Counts and rules check",
+  "summary": "The ./formvis counts [--check] gate: README sizes and blend-mode count match the code; no scrollbar styles, patent-declined features, declined providers or sparkle icon; --commands gates catalogue words. The model for a slots --check.",
+  "description": "A thin bash wrapper (`setup/counts`, `counts.bat`) runs `setup/line_counts.py` with the backend venv Python. `--check` returns `check()`: README line-count sentence within 3 percent or 100 lines, \"N blend modes\" stated once and equal to BLEND_MODES, then `scrollbar_problems` and `declined_problems` over git-tracked product files (i18n tables excluded). `--commands [--check]` reads the catalogue mirror in the data folder and fails on missing metadata or under 620 ids. Machine-checkable family laws live here as regexes; this is where a new rule slot would add its check. Note: B06 lists setup/cli.py, corpus.py and collect_licenses.py with this row; they are the command line, the real-file decode check and the licence collector, not part of the counts check, and are not listed.",
+  "kind": "module",
+  "layer": "shared",
+  "tags": [
+    "check",
+    "ci",
+    "gate",
+    "readme",
+    "declined",
+    "lint"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "setup/line_counts.py",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "counts",
+        "signature": "def counts(root: Path = ROOT) -> dict[str, int]",
+        "doc": "Counts product lines per language (TypeScript, CSS, Python, Rust), tests excluded."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "rounded",
+        "signature": "def rounded(n: int) -> int",
+        "doc": "Rounds a figure to hundreds."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "sentence",
+        "signature": "def sentence(c: dict[str, int]) -> str",
+        "doc": "Builds the README Stack sentence from the counts."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "blend_modes",
+        "signature": "def blend_modes(root: Path = ROOT) -> int",
+        "doc": "Number of BLEND_MODES entries in the engine types."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "check",
+        "signature": "def check(root: Path = ROOT) -> list[str]",
+        "doc": "What in README.md disagrees with the code; empty when it is accurate."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "declined_problems",
+        "signature": "def declined_problems(root: Path = ROOT) -> list[str]",
+        "doc": "Product code that names a feature declined for patents (see DECLINED); the README check fails on any."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "scrollbar_problems",
+        "signature": "def scrollbar_problems(root: Path = ROOT) -> list[str]",
+        "doc": "Any style that could draw a scrollbar (DEV_PLAN 28.7, the owner's zero-scrollbar rule): a scrollbar-width other than none, a scrollbar-color, or a ::-webkit-scrollbar rule that gives the bar a size or shows it;"
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "catalogue_file",
+        "signature": "def catalogue_file() -> Path",
+        "doc": "Path of the mirrored command catalogue in the data folder."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "commands_main",
+        "signature": "def commands_main(strict: bool) -> int",
+        "doc": "The command catalogue's size (DEV_PLAN 28.3) and what lacks metadata. The window builds the catalogue from its live registry (generated commands, every tool and tool option included) and the engine keeps the last copy it was sent in the..."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "DECLINED",
+        "signature": "DECLINED = re.compile(...)",
+        "doc": "Regex of the patent-declined feature names (Content-Aware Scale by seam carving and skin-tone protection); any product-code match fails the check."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "PROVIDERS_DECLINED",
+        "signature": "PROVIDERS_DECLINED = re.compile(...)",
+        "doc": "Regex of declined cloud providers (one cloud provider by design: fal)."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "SPARKLE_BANNED",
+        "signature": "SPARKLE_BANNED = re.compile(...)",
+        "doc": "Regex for the banned three-star sparkle icon, its path data and its glyphs."
+      },
+      {
+        "file": "setup/line_counts.py",
+        "symbol": "MIN_COMMANDS",
+        "signature": "MIN_COMMANDS = 620",
+        "doc": "Minimum number of ids the command catalogue must hold."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "setup/counts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "product name"
+      ]
+    },
+    {
+      "path": "setup/counts.bat",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "product name"
+      ]
+    },
+    {
+      "path": "setup/line_counts.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "KINDS paths",
+        "DECLINED, PROVIDERS_DECLINED, SPARKLE_BANNED patterns",
+        "MIN_COMMANDS",
+        "FORMVIS_DATA_DIR env"
+      ]
+    },
+    {
+      "path": "setup/lib.sh",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "FORMVIS_ROOT variable and cv_ prefix"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "check-exits-1",
+      "text": "counts --check exits 1 when README.md drifts, a scrollbar style appears, or product code names a declined feature, provider or the sparkle icon.",
+      "severity": "must"
+    },
+    {
+      "id": "git-tracked-only",
+      "text": "Scans cover git-tracked product files and skip i18n tables and tests, so translations may name a declined feature in words without failing.",
+      "severity": "should"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "CLI usage",
+      "language": "bash",
+      "snippet": "counts [--check]    the README's code sizes and blend-mode count (--check: exit 1 if README.md has drifted)\ncounts --commands [--check]  the command catalogue's size and any command without metadata (--check: exit 1 under 620 or while any lacks it)",
+      "whenToUse": "Run before a release or in CI to keep the README honest and the rules enforced."
+    },
+    {
+      "title": "Where the check composes",
+      "language": "py",
+      "snippet": "return problems + scrollbar_problems(root) + declined_problems(root)",
+      "whenToUse": "Add a new machine-checkable rule by adding a function and appending it here."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 36
+  }
+}

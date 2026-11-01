@@ -1,0 +1,162 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.toast",
+  "title": "Toast notices",
+  "summary": "toast(text, kind, opts) shows a notice (info or error) with optional action buttons and duration, de-duplicates an identical notice already showing, keeps clear of the pointer, and records the last 100 in a history that a notices dialog can list.",
+  "description": "Notices mount in `#toast-root`. The same text already showing is kept in place and its timer restarted; `ms: 0` keeps a notice until dismissed. `noticeHistory()` returns the last 100 (same text twice in a row is one entry with a count); `onNoticeHistory` lets a dialog stay current. Display time is `opts.ms`, else 10 s with actions, else the `noticeSeconds` preference, else 6 s for errors and 3.6 s for info. Style rules (`cv-toast*`) are in `dialogs.css`.",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "toast",
+    "notice",
+    "history"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/toast.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/toast.ts",
+        "symbol": "NoticeAction",
+        "signature": "export interface NoticeAction { label: string; run: () => void }",
+        "doc": "A button on a notice: label and handler."
+      },
+      {
+        "file": "frontend/src/ui/toast.ts",
+        "symbol": "NoticeOptions",
+        "signature": "export interface NoticeOptions { actions?: NoticeAction[]; ms?: number }",
+        "doc": "Optional actions and display milliseconds; 0 keeps the notice until dismissed."
+      },
+      {
+        "file": "frontend/src/ui/toast.ts",
+        "symbol": "NoticeRecord",
+        "signature": "export interface NoticeRecord { id: number; text: string; kind: 'info' | 'error'; at: number; count: number }",
+        "doc": "One history entry: id, text, kind, time and repeat count."
+      },
+      {
+        "file": "frontend/src/ui/toast.ts",
+        "symbol": "noticeHistory",
+        "signature": "export const noticeHistory = (): readonly NoticeRecord[] => ...",
+        "doc": "Every notice shown, oldest first, the last 100; the same text twice in a row is one entry with a count."
+      },
+      {
+        "file": "frontend/src/ui/toast.ts",
+        "symbol": "clearNoticeHistory",
+        "signature": "export function clearNoticeHistory(): void",
+        "doc": "Empties the history and tells the watchers."
+      },
+      {
+        "file": "frontend/src/ui/toast.ts",
+        "symbol": "onNoticeHistory",
+        "signature": "export function onNoticeHistory(fn: () => void): () => void",
+        "doc": "Registers a watcher called when the history changes; returns the unsubscribe function."
+      },
+      {
+        "file": "frontend/src/ui/toast.ts",
+        "symbol": "toast",
+        "signature": "export function toast(text: string, kind: 'info' | 'error' = 'info', opts: NoticeOptions = {}): () => void",
+        "doc": "A notice. The same text already showing is kept where it is and shown for its full time again, rather than stacked a second time, which would push the others up the screen."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [
+      "cv-toast",
+      "cv-toast-text",
+      "cv-toast-actions",
+      "cv-toast-action",
+      "cv-toast-close"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/toast.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "#toast-root host id"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.dom-helpers",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.icons",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.prefs-store",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "css.panels-dialogs",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "z-scale",
+      "text": "Stacking above local ordering uses var(--z-*) from the one z scale; a raw numeric z-index is not allowed.",
+      "severity": "must"
+    },
+    {
+      "id": "inline-icons",
+      "text": "Icons are inline currentColor SVG strings from the icons module (icon(name, size)); no icon library, and the three-star sparkle icon is banned under any name.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Error notice from a failed promise",
+      "language": "ts",
+      "snippet": "void file.text().then((text) => { s.develop = developFromXmp(text); for (const f of devSync) f(); this.schedule(); }).catch((err: unknown) => toast(err instanceof Error ? err.message : 'The settings could not be read.', 'error'));",
+      "whenToUse": "Surface a recoverable failure without a dialog."
+    },
+    {
+      "title": "Info notice",
+      "language": "ts",
+      "snippet": "if (x) toast(`Recorded \"${x.name}\", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`);",
+      "whenToUse": "Confirm a completed action in one line."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 11
+  }
+}

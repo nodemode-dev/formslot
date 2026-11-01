@@ -1,0 +1,301 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "css.panels-dialogs",
+  "title": "Panels, dialogs and light layer",
+  "summary": "Control and dialog stylesheet set: panels.css (layers, brushes, props, group tabs, dock, menu), dialogs.css (scrim, dialog, prefs, toast, numpop, toggles), no-scrollbar rules, Inter and JetBrains Mono font imports, and the light-mode shadow layer.",
+  "description": "Five sheets loaded after `tokens.css` and `shell.css`. `dialogs.css` holds `.cv-scrim`/`.cv-dialog` (the dialog kit), the toggle switch, number popover and Preferences chrome; `panels.css` holds the panel group, dock, float and glass menu rules; `scrollbars.css` removes every scrollbar (owner rule); `fonts.css` imports Inter 400/500/600 and JetBrains Mono 400/700 from @fontsource; `light-mode.css` only restores the glass shadow under `body.theme-light`. `panels.css` still has four raw local-stacking z-index values (2, 4, 5) at this commit; everything above local stacking uses the scale. Many class families are formvis-specific (layers, brushes, filters) and are dropped on a port.",
+  "kind": "style",
+  "layer": "frontend",
+  "tags": [
+    "panels",
+    "dialogs",
+    "scrollbars",
+    "fonts",
+    "light-mode",
+    "css"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/styles/dialogs.css",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [
+      "cv-nd-*",
+      "cv-layer-*",
+      "cv-prefs-*",
+      "cv-assistant-*",
+      "cv-brush-*",
+      "cv-fg-*",
+      "cv-props-*",
+      "cv-group-*",
+      "cv-ch-*",
+      "cv-color-*",
+      "cv-new-*",
+      "cv-scrim-*",
+      "cv-comp-*",
+      "cv-dialog-*",
+      "cv-history-*",
+      "cv-menu-*",
+      "cv-action-*",
+      "cv-help-*",
+      "cv-nav-*",
+      "cv-path-*",
+      "cv-pick-*",
+      "cv-shape-*",
+      "cv-step-*",
+      "cv-btn-*",
+      "cv-chip-*",
+      "cv-dock-*",
+      "cv-frame-*",
+      "cv-list-*",
+      "cv-meta-*",
+      "cv-palette-*",
+      "cv-stop-*",
+      "cv-toast-*",
+      "cv-actions-*",
+      "cv-comps-*",
+      "cv-float-*",
+      "cv-gen-*",
+      "cv-hist-*",
+      "cv-info-*",
+      "cv-layers-*",
+      "cv-numpop-*"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/styles/panels.css",
+      "role": "style",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "formvis-only class families"
+      ]
+    },
+    {
+      "path": "frontend/src/styles/dialogs.css",
+      "role": "style",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "formvis-only class families"
+      ]
+    },
+    {
+      "path": "frontend/src/styles/scrollbars.css",
+      "role": "style",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    },
+    {
+      "path": "frontend/src/styles/fonts.css",
+      "role": "style",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    },
+    {
+      "path": "frontend/src/styles/light-mode.css",
+      "role": "style",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "tokens.studio-dark",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [
+      {
+        "name": "@fontsource/inter",
+        "range": "5.3.0"
+      },
+      {
+        "name": "@fontsource/jetbrains-mono",
+        "range": "5.3.0"
+      }
+    ],
+    "python": [],
+    "cargo": [],
+    "tokens": [
+      "--accent",
+      "--accent-color",
+      "--accent-color-dim",
+      "--accent-glow",
+      "--accent-ink",
+      "--accent-line",
+      "--accent-soft",
+      "--accent-tint-strong",
+      "--bg-hover",
+      "--bg-input",
+      "--bg-primary",
+      "--bg-scrim",
+      "--bg-secondary",
+      "--bg-tertiary",
+      "--border",
+      "--border-color",
+      "--border-light",
+      "--border-soft",
+      "--brand-orange",
+      "--cta-bg",
+      "--cta-bg-hover",
+      "--cta-text",
+      "--ctl",
+      "--ctl-md",
+      "--ctl-sm",
+      "--cv-action-blue",
+      "--cv-action-violet",
+      "--cv-btn-tint",
+      "--cv-dialog-w",
+      "--cv-item",
+      "--cv-label",
+      "--cv-props-open-w",
+      "--cv-row-h",
+      "--cv-thumb",
+      "--danger",
+      "--danger-fill",
+      "--danger-soft",
+      "--danger-text",
+      "--depth",
+      "--dyn-track",
+      "--flip",
+      "--font-mono",
+      "--font-ui",
+      "--fs-10",
+      "--fs-11",
+      "--fs-12",
+      "--fs-13",
+      "--fs-14",
+      "--glass-bg",
+      "--glass-filter",
+      "--glass-shadow",
+      "--group-head",
+      "--ink",
+      "--line-0",
+      "--line-1",
+      "--line-2",
+      "--line-3",
+      "--ok",
+      "--pct",
+      "--radius",
+      "--radius-lg",
+      "--radius-md",
+      "--radius-pill",
+      "--radius-sm",
+      "--radius-xl",
+      "--radius-xs",
+      "--shadow-lg",
+      "--shadow-md",
+      "--shadow-menu",
+      "--shadow-sm",
+      "--shadow-window",
+      "--space-1",
+      "--space-2",
+      "--space-3",
+      "--space-4",
+      "--space-5",
+      "--space-6",
+      "--space-7",
+      "--surface-0",
+      "--surface-1",
+      "--surface-2",
+      "--surface-field",
+      "--surface-raised",
+      "--swatch",
+      "--text",
+      "--text-muted",
+      "--text-on-accent",
+      "--text-primary",
+      "--text-secondary",
+      "--warn",
+      "--z-base",
+      "--z-companion",
+      "--z-context",
+      "--z-menu",
+      "--z-modal",
+      "--z-raised",
+      "--z-selected",
+      "--z-taskbar"
+    ],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "tokens-only",
+      "text": "Every colour, space and radius comes from a token in the studio-dark token set (var(--bg-*), var(--text-*), var(--border-*), var(--space-*), var(--radius-*)); no literal colour values in component code.",
+      "severity": "must"
+    },
+    {
+      "id": "z-scale",
+      "text": "Stacking above local ordering uses var(--z-*) from the one z scale; a raw numeric z-index is not allowed.",
+      "severity": "must"
+    },
+    {
+      "id": "no-scrollbars",
+      "text": "No scrollbar is ever drawn anywhere (the owner rule); content still scrolls by wheel, trackpad, touch and keys.",
+      "severity": "must"
+    },
+    {
+      "id": "light-is-override",
+      "text": "Light mode is the body.theme-light override layer on top of the dark default, never a separate stylesheet set.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [
+    {
+      "spdx": "OFL-1.1",
+      "name": "Inter and JetBrains Mono (via @fontsource)",
+      "url": "",
+      "files": [
+        "frontend/src/styles/fonts.css"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "title": "Scrollbars removed everywhere",
+      "language": "css",
+      "snippet": "*, *::before, *::after { scrollbar-width: none !important; -ms-overflow-style: none !important; }\n*::-webkit-scrollbar, *::-webkit-scrollbar-button, *::-webkit-scrollbar-track, *::-webkit-scrollbar-thumb, *::-webkit-scrollbar-corner {\n  display: none !important; width: 0 !important; height: 0 !important; background: transparent !important;\n}\nhtml, body { scrollbar-width: none !important; }",
+      "whenToUse": "When a new form app needs the same no-scrollbar look."
+    },
+    {
+      "title": "Font imports",
+      "language": "css",
+      "snippet": "@import \"@fontsource/inter/400.css\";\n@import \"@fontsource/inter/500.css\";\n@import \"@fontsource/inter/600.css\";\n@import \"@fontsource/jetbrains-mono/400.css\";\n@import \"@fontsource/jetbrains-mono/700.css\";",
+      "whenToUse": "When loading the family fonts in a new app."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 5
+  }
+}

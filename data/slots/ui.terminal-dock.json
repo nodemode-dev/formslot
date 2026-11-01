@@ -1,0 +1,447 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.terminal-dock",
+  "title": "Terminal dock",
+  "summary": "Bottom dock of engine-owned PTY terminals (xterm.js) with Claude Code tabs, a Chat tab, an ask bar and a resize grip; open state and height are written before first paint. Backend: PTY sessions, WebSocket stream, loopback-only routes. From formlit.",
+  "description": "Frontend `TerminalDock` builds its head, stage and ask bar once; tabs are added and removed one by one and the status note is patched in place. Its open state and height live on `documentElement` (`data-ft-dock`, `data-ft-dock-h`, `--ft-dock-size`), set before first paint by a second inline script in index.html (see `theme.prepaint-boot`), so `terminal.css` reserves the row and nothing moves on open. Backend `services/terminal.py` opens PTYs (ptyprocess on macOS and Linux, pywinpty on Windows) and `routers/terminal.py` exposes them under /api/terminal with an origin check, a 24-socket cap and a WebSocket per tab. The Chat tab is `ui.chat-pane`; the Claude Code launch path is `svc.claude-code-agents`. The engine owns every process. Imports ../io/api and ./i18n (not seeded).",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "terminal",
+    "pty",
+    "xterm",
+    "claude-code",
+    "websocket",
+    "dock"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/terminal-dock.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "DockKind",
+        "signature": "export type DockKind = 'shell' | 'claude' | 'chat'",
+        "doc": "The kinds of tab: shell, claude or chat."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock",
+        "signature": "export class TerminalDock",
+        "doc": "The terminal dock (DEV_PLAN 28.5): the window's bottom band of engine PTYs, one tab each (shells and Claude Code), the Chat tab, and the ask bar at its foot. The head, the stage and the ask bar are built once;"
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.isOpen",
+        "signature": "isOpen(): boolean",
+        "doc": "True when documentElement has data-ft-dock=open."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.toggle",
+        "signature": "toggle(on = !this.isOpen(), seed: DockKind | 'none' = 'shell'): void",
+        "doc": "Opens or closes the dock (default: flip), keeps open and height in localStorage, seeds a tab of the given kind when opening, and fires onChange and onTab."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.newTerminal",
+        "signature": "async newTerminal(): Promise<void>",
+        "doc": "Opens the dock if closed, else adds a new shell tab."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.activeKind",
+        "signature": "activeKind(): DockKind | null",
+        "doc": "The kind of the active tab, or null."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.isShowing",
+        "signature": "isShowing(kind: DockKind): boolean",
+        "doc": "True when the dock is open on a tab of this kind."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.show",
+        "signature": "async show(kind: DockKind): Promise<void>",
+        "doc": "Opens the dock on a tab of this kind: the first one there is, or a new one."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.toggleKind",
+        "signature": "async toggleKind(kind: DockKind): Promise<void>",
+        "doc": "The title bar buttons and the Window menu: hides the dock while this kind of tab is showing, shows it on one otherwise."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.sync",
+        "signature": "async sync(): Promise<void>",
+        "doc": "Adopts agent sessions the engine opened (kind agent) as tabs."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.focus",
+        "signature": "focus(): void",
+        "doc": "Focuses the ask bar on the Chat tab, else the active terminal."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.showChat",
+        "signature": "async showChat(): Promise<void>",
+        "doc": "Creates the Chat pane on first use and shows its tab."
+      },
+      {
+        "file": "frontend/src/ui/terminal-dock.ts",
+        "symbol": "TerminalDock.claude",
+        "signature": "async claude(prompt?: string, resume?: string): Promise<boolean>",
+        "doc": "Opens Claude Code in a tab (the live one is reused; a prompt is typed into it) or resumes a chat's session. False when it could not start."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "Session",
+        "signature": "class Session",
+        "doc": "One engine-owned terminal session: id, title, cwd, kind (shell, claude or agent), the PTY process, a size-capped scrollback and the subscriber queues the WebSocket reads."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "bind",
+        "signature": "def bind(loop: asyncio.AbstractEventLoop) -> None",
+        "doc": "Records the asyncio loop that PTY reader threads post output to."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "login_shell",
+        "signature": "def login_shell() -> list[str]",
+        "doc": "The login shell argv: COMSPEC on Windows, else $SHELL (or bash, sh) with -l."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "base_env",
+        "signature": "def base_env() -> dict",
+        "doc": "Environment for child terminals: TERM xterm-256color, COLORTERM truecolor, FORMVIS_TERMINAL=1, the engine URL and the repo on PATH."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "open_session",
+        "signature": "def open_session(cwd: str | None = None, cols: int = 100, rows: int = 30, title: str | None = None, argv: list[str] | None = None, env: dict | None = None, kind: str = \"shell\") -> Session",
+        "doc": "Spawns a PTY at a size (shell by default, or argv and env for a program) in a folder and returns the Session; FileNotFoundError when the folder is missing."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "restart",
+        "signature": "def restart(sid: str) -> Session",
+        "doc": "Terminates the process and respawns it in the same folder with the same argv and env, clearing the scrollback; only for shell and claude sessions."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "agent_session",
+        "signature": "def agent_session() -> Session",
+        "doc": "The one session of kind agent (no PTY) that in-app agent output is written to, created on first use."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "agent_write",
+        "signature": "def agent_write(text: str) -> None",
+        "doc": "Writes text, with newlines as CRLF, into the agent session."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "write",
+        "signature": "def write(sid: str, data: str) -> None",
+        "doc": "Sends keystrokes to a live session PTY."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "resize",
+        "signature": "def resize(sid: str, cols: int, rows: int) -> None",
+        "doc": "Stores a new size (with minimums) and resizes the PTY."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "close",
+        "signature": "def close(sid: str) -> None",
+        "doc": "Removes a session, terminates its process and ends its subscribers."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "get",
+        "signature": "def get(sid: str) -> Session",
+        "doc": "Looks a session up by id; KeyError when missing."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "live_claude",
+        "signature": "def live_claude() -> Session | None",
+        "doc": "The first live session of kind claude, or None."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "listing",
+        "signature": "def listing() -> list[dict]",
+        "doc": "Every session described as a dict (id, title, cwd, alive, kind)."
+      },
+      {
+        "file": "backend/app/services/terminal.py",
+        "symbol": "close_all",
+        "signature": "def close_all() -> None",
+        "doc": "Closes every session."
+      }
+    ],
+    "commands": [],
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/api/terminal",
+        "handler": "list_terminals",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/terminal.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/terminal",
+        "handler": "open_terminal",
+        "requestSchemaRef": "OpenBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/terminal.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/terminal/claude",
+        "handler": "open_claude",
+        "requestSchemaRef": "ClaudeBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/terminal.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/terminal/{sid}/resize",
+        "handler": "resize_terminal",
+        "requestSchemaRef": "SizeBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/terminal.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/terminal/{sid}/restart",
+        "handler": "restart_terminal",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/terminal.py"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/terminal/{sid}",
+        "handler": "close_terminal",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/terminal.py"
+      },
+      {
+        "method": "WS",
+        "path": "/api/terminal/{sid}/stream",
+        "handler": "attach",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/terminal.py"
+      }
+    ],
+    "cssClasses": [
+      "ft-dock",
+      "ft-dock-head",
+      "ft-dock-tabs",
+      "ft-dock-tab",
+      "ft-dock-stage",
+      "ft-dock-ask",
+      "ft-dock-grip",
+      "ft-dock-note",
+      "ft-term"
+    ],
+    "cssVars": [
+      "--ft-dock-size"
+    ]
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/terminal-dock.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "storage key formvis.terminal",
+        "data-ft-dock attributes"
+      ]
+    },
+    {
+      "path": "frontend/src/styles/terminal.css",
+      "role": "style",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": []
+    },
+    {
+      "path": "backend/app/services/terminal.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "env FORMVIS_TERMINAL, FORMVIS_ENGINE_URL, FORMVIS_PORT"
+      ]
+    },
+    {
+      "path": "backend/app/routers/terminal.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.dom-helpers",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.icons",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.chat-pane",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [
+      {
+        "name": "@xterm/xterm",
+        "range": "6.0.0"
+      },
+      {
+        "name": "@xterm/addon-fit",
+        "range": "0.11.0"
+      }
+    ],
+    "python": [
+      {
+        "name": "fastapi",
+        "range": "0.141.1"
+      },
+      {
+        "name": "ptyprocess",
+        "range": "0.7.0"
+      },
+      {
+        "name": "pywinpty",
+        "range": "3.0.5"
+      }
+    ],
+    "cargo": [],
+    "tokens": [
+      "--fs-13",
+      "--ft-dock-size"
+    ],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "strings-through-t",
+      "text": "User-visible strings go through t() from the i18n module; the English text is the key.",
+      "severity": "should"
+    },
+    {
+      "id": "inline-icons",
+      "text": "Icons are inline currentColor SVG strings from the icons module (icon(name, size)); no icon library, and the three-star sparkle icon is banned under any name.",
+      "severity": "must"
+    },
+    {
+      "id": "loopback-only",
+      "text": "The engine is reached on loopback only, behind the app-wide LocalGuard middleware (app/core/local_guard.py, not in this corpus); routes that act (start processes, write settings or secrets, WebSockets) also check the request origin with require_local or origin_ok.",
+      "severity": "must"
+    },
+    {
+      "id": "dock-state-before-paint",
+      "text": "The open flag and height are on documentElement before first paint, written by the inline boot script; the component never reads them back after paint to size the row.",
+      "severity": "must"
+    },
+    {
+      "id": "engine-owns-processes",
+      "text": "Every PTY and child process is owned and closed by the engine; the window only attaches to it over WebSocket.",
+      "severity": "must"
+    },
+    {
+      "id": "socket-cap",
+      "text": "WebSocket attachments go through take_socket/release_socket (24 at once).",
+      "severity": "should"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [
+    {
+      "spdx": "MIT",
+      "name": "xterm.js (@xterm/xterm, @xterm/addon-fit)",
+      "url": "",
+      "files": [
+        "frontend/src/ui/terminal-dock.ts"
+      ]
+    },
+    {
+      "spdx": "ISC",
+      "name": "ptyprocess",
+      "url": "",
+      "files": [
+        "backend/app/services/terminal.py"
+      ]
+    },
+    {
+      "spdx": "MIT",
+      "name": "pywinpty",
+      "url": "",
+      "files": [
+        "backend/app/services/terminal.py"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "title": "Mount the dock above the status line",
+      "language": "ts",
+      "snippet": "const termDock = new TerminalDock();\nroot.insertBefore(termDock.root, q(root, '.cv-status'));\ntermDock.onChange = () => { window.dispatchEvent(new Event('resize')); };\ntermDock.onTab = () => { titleTools.syncDock(termDock.isOpen(), termDock.activeKind()); };\ninstallAgentConnect(commands, engine);",
+      "whenToUse": "At boot: insert the dock root before the status bar and wire onChange to a window resize."
+    },
+    {
+      "title": "Open a terminal session on the engine",
+      "language": "py",
+      "snippet": "@router.post(\"\")\ndef open_terminal(body: OpenBody, request: Request) -> dict:\n    require_local(request)\n    try:\n        return terminal.open_session(cols=body.cols, rows=body.rows, title=body.title).describe()\n    except (OSError, FileNotFoundError) as exc:\n        raise HTTPException(status_code=500, detail=f\"The shell could not start: {exc}\")",
+      "whenToUse": "The route a new terminal tab calls."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 21
+  }
+}

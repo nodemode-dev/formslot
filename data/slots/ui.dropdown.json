@@ -1,0 +1,130 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.dropdown",
+  "title": "Glass dropdown for selects",
+  "summary": "enhanceSelect(select, {search, onHover}) shows a native select as a glass list with optional search and live hover preview; enhanceAllSelects(root) upgrades every select in the app and watches for new ones. The native select stays in the DOM as the source of truth.",
+  "description": "The native `<select>` gets `cv-dd-native` and keeps its value and change events; a button plus a popup list is built once. `onHover(value | null)` previews a choice under the pointer or arrow keys and passes null on leaving. Selects with `multiple`, `size` or `data-native` are skipped. Pairs with `selectRow` in `ui.control-rows`.",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "select",
+    "dropdown",
+    "glass",
+    "hover-preview"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/dropdown.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/dropdown.ts",
+        "symbol": "enhanceSelect",
+        "signature": "export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string; onHover?: (value: string | null) => void } = {}): void",
+        "doc": "A native <select> shown as the target's menu (Phase 21, UI_SPEC.md; s21's blend modes, s23's workspaces): a button with the chosen label and a chevron;"
+      },
+      {
+        "file": "frontend/src/ui/dropdown.ts",
+        "symbol": "enhanceAllSelects",
+        "signature": "export function enhanceAllSelects(root: ParentNode = document): void",
+        "doc": "Every select in the app shown as the glass list (the owner's walkthrough: native menus cannot be glass, the system draws them): those present now and any added later (dialogs and bars build theirs as they open)."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [
+      "cv-dd-btn",
+      "cv-dd-head",
+      "cv-dd-item",
+      "cv-dd-label",
+      "cv-dd-list",
+      "cv-dd-native",
+      "cv-dd-pop",
+      "cv-dd-search"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/dropdown.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.dom-helpers",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.icons",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "css.panels-dialogs",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "inline-icons",
+      "text": "Icons are inline currentColor SVG strings from the icons module (icon(name, size)); no icon library, and the three-star sparkle icon is banned under any name.",
+      "severity": "must"
+    },
+    {
+      "id": "z-scale",
+      "text": "Stacking above local ordering uses var(--z-*) from the one z scale; a raw numeric z-index is not allowed.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Select with search and hover preview",
+      "language": "ts",
+      "snippet": "enhanceSelect(this.blend, { search: 'Search blend modes...', onHover: (v) => engine.previewBlend(v === 'pass-through' ? 'normal' : v as Layer['blend'] | null) });",
+      "whenToUse": "A long list (blend modes) that should be searchable and preview on hover."
+    },
+    {
+      "title": "Upgrade every select once at boot",
+      "language": "ts",
+      "snippet": "enhanceAllSelects();   // every dropdown as the glass list (the owner's walkthrough)",
+      "whenToUse": "In the boot sequence, after the panels are built."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 10
+  }
+}

@@ -1,0 +1,265 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.prefs-store",
+  "title": "Preferences store and option memory",
+  "summary": "Validated preferences record in localStorage (formvis.prefs): loadPrefs clamps every field to its default, updatePrefs merges and saves, recalled/remembered keep per-dialog values, installOptionMemory makes tool options stick. Fields are data; the pattern is the slot.",
+  "description": "Reading never throws: `loadPrefs()` parses the JSON and validates each field (type, range, enum) against `DEFAULT_PREFS`, so a bad or old file degrades field by field. `updatePrefs(patch)` merges and writes. `recalled(dialog, name)` and `remembered(dialog, name, value)` back `Dialog.remember`. `installOptionMemory(engine)` wraps each tool `options` so a changed value is kept as `tool.option`, a value equal to the tool default is not kept (a later default change still reaches everyone), and options that describe the document or gesture are skipped (`skipped`). `prefs.ts` is heavily coupled to the formvis engine (renderer, tiling, workers); a port keeps the pattern and replaces the field list. Imports ./themes (this corpus), ./i18n/langs and ./colour-settings (not seeded).",
+  "kind": "module",
+  "layer": "frontend",
+  "tags": [
+    "preferences",
+    "settings",
+    "localStorage",
+    "dialog-memory",
+    "tool-options"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/prefs.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "Prefs",
+        "signature": "export interface Prefs extends PagePrefs { language: Lang; profileMismatch: MismatchPref; colour: ColourSettings; colourPresets: ColourPreset[]; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; historyAuto: boolean; memoryLimitMB: number; effectCacheMB: number; backgroundReleaseSec: number; backgroundCacheMB: number; memoryReserveMB: number; cacheLevels: number; regionRedraws: boolean; layerReuse: boolean; fullPreviews: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; gpuFilters: boolean; renderer: GpuRenderer; gpuMemoryMB: number; gpuPower: GpuPower; lowLatency: boolean; hdrDisplay: boolean; framePacingMs: number; cacheTilePx: number; tileFromMp: number; workerThreads: number; workerComposite: boolean; engineDevice: EngineDevice; { ... }",
+        "doc": "Preferences that change how formvis works, kept on this device. Every one acts on something real: History States and history memory are the undo limits every project uses;"
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "PagePrefs",
+        "signature": "export interface PagePrefs { ... }",
+        "doc": "Preferences > Scratch Disks, Cursors, Transparency & Gamut, Units & Rulers, Guides Grid & Slices, Plug-ins, Type and Enhanced Controls."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "PAGE_DEFAULTS",
+        "signature": "export const PAGE_DEFAULTS: PagePrefs",
+        "doc": "Defaults for PagePrefs."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "ToolOptionValue",
+        "signature": "export type ToolOptionValue = string | number | boolean",
+        "doc": "A value a tool option keeps: string, number or boolean."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "DialogValue",
+        "signature": "export type DialogValue = string | boolean",
+        "doc": "A value a dialog control keeps: string or boolean."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "DEFAULT_PREFS",
+        "signature": "export const DEFAULT_PREFS: Prefs",
+        "doc": "The default for every preference; loadPrefs falls back to it field by field."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "cleanBindings",
+        "signature": "export function cleanBindings(v: unknown): Record<string, string[]>",
+        "doc": "A binding map (command id to combinations), strings only: what a saved set or an imported file may hold."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "loadPrefs",
+        "signature": "export function loadPrefs(): Prefs",
+        "doc": "Reads formvis.prefs from localStorage and validates every field (type, range, enum) against DEFAULT_PREFS; never throws, a bad file degrades field by field."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "savePrefs",
+        "signature": "export function savePrefs(p: Prefs): void",
+        "doc": "Writes the whole Prefs object to localStorage; a storage failure keeps the values for the session only."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "recalled",
+        "signature": "export const recalled = (dialog: string, name: string): DialogValue | undefined => ...",
+        "doc": "A value a dialog kept under `name` (see `Dialog.remember`), for dialogs that hold their settings as an object."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "remembered",
+        "signature": "export function remembered(dialog: string, name: string, value: DialogValue): void",
+        "doc": "Keeps `value` for a dialog under `name`; nothing is written when it is already what is kept."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "updatePrefs",
+        "signature": "export function updatePrefs(patch: Partial<Prefs>): Prefs",
+        "doc": "Changes some preferences and keeps them: what a tool option, a dialog or What's New remembers goes through here."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "applyUiFontSize",
+        "signature": "export function applyUiFontSize(p: Prefs): void",
+        "doc": "Scales the interface's font-size tokens (--fs-9 to --fs-18) to the chosen size, and the rules that still write a size in pixels with them."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "UI_SCALES",
+        "signature": "export const UI_SCALES: ReadonlyArray<readonly [string, string]>",
+        "doc": "Interface scale: the whole window zoomed (CSS zoom on the root in the browser, the web view's own zoom in the desktop app), kept on this device (the View > Interface Zoom commands use the same key)."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "uiScaleChoice",
+        "signature": "export function uiScaleChoice(): string",
+        "doc": "The stored interface zoom choice (formvis.uiZoom), 1 when unset or unknown."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "setShellZoom",
+        "signature": "export function setShellZoom(zoom: number): void",
+        "doc": "The zoom the desktop window already holds (its shell reports it): a zoomed web view reports a larger pixel ratio, which Auto divides out."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "autoUiScale",
+        "signature": "export function autoUiScale(): number",
+        "doc": "What Auto means: a display the system already scales (devicePixelRatio above 1) is left at 100%; one reported at 1 that is 3000 pixels wide or more gets 150%, and from 3800 pixels 200%."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "setUiScale",
+        "signature": "export function setUiScale(v: string): void",
+        "doc": "Stores the interface zoom choice under formvis.uiZoom and fires formvis:ui-zoom."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "updateAtStart",
+        "signature": "export function updateAtStart(): boolean",
+        "doc": "Preferences > Plugins > Updates: whether the desktop app looks for a new version when it starts (on unless turned off)."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "setUpdateAtStart",
+        "signature": "export function setUpdateAtStart(on: boolean): void",
+        "doc": "Stores the update-at-start choice."
+      },
+      {
+        "file": "frontend/src/ui/prefs.ts",
+        "symbol": "applyPrefs",
+        "signature": "export function applyPrefs(engine: Engine, p: Prefs): void",
+        "doc": "Pushes preferences into the engine and renderer settings (cache levels, frame pacing, tiling, worker threads, memory limits and more)."
+      },
+      {
+        "file": "frontend/src/ui/option-memory.ts",
+        "symbol": "skipped",
+        "signature": "export const skipped = (tool: string, label: string): boolean => ...",
+        "doc": "Whether an option describes the document or the gesture (never kept); Tool Presets (35.3) skip the same ones."
+      },
+      {
+        "file": "frontend/src/ui/option-memory.ts",
+        "symbol": "OptionMemory",
+        "signature": "export interface OptionMemory { reset(toolId?: string): number }",
+        "doc": "What the option memory lets the rest of the app do: put one tool's options, or every tool's, back to their defaults."
+      },
+      {
+        "file": "frontend/src/ui/option-memory.ts",
+        "symbol": "installOptionMemory",
+        "signature": "export function installOptionMemory(engine: Engine): OptionMemory",
+        "doc": "Wraps each tool options so a changed value is kept as tool.option in Preferences and put back at start; returns an OptionMemory."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/prefs.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "storage keys formvis.prefs, formvis.uiZoom, formvis.updateAtStart",
+        "Prefs field list"
+      ]
+    },
+    {
+      "path": "frontend/src/ui/option-memory.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "tool registry imports"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "theme.profiles-14",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "read-never-throws",
+      "text": "loadPrefs and savePrefs never throw: reads validate each field against its default, writes swallow storage failure and keep the value for the session.",
+      "severity": "must"
+    },
+    {
+      "id": "default-not-stored",
+      "text": "A tool option equal to the tool default is not kept, so a later change of the default still reaches everyone who never moved it.",
+      "severity": "should"
+    },
+    {
+      "id": "storage-try-catch",
+      "text": "Every localStorage read and write is wrapped in try/catch.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Remember a value for a dialog or panel",
+      "language": "ts",
+      "snippet": "try { const v = JSON.parse(String(recalled('Brush Picker', 'recent') ?? '[]')); return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 8) : []; } catch { return []; }",
+      "whenToUse": "Read a remembered value that is not a form control."
+    },
+    {
+      "title": "Keep a value as it changes",
+      "language": "ts",
+      "snippet": "if (id && this.before && id !== this.before.id) remembered('Brush Picker', 'recent', JSON.stringify([id, ...this.recent().filter((x) => x !== id)].slice(0, 8)));",
+      "whenToUse": "Write it back when it changes; unchanged values are not rewritten."
+    },
+    {
+      "title": "Install option memory at boot",
+      "language": "ts",
+      "snippet": "const optionMemory = installOptionMemory(engine);   // every tool option sticks (DEV_PLAN 35.1), before the bar and the catalogue read the options",
+      "whenToUse": "Before the options bar and the command catalogue read tool options."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 19
+  }
+}

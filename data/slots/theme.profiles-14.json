@@ -1,0 +1,259 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "theme.profiles-14",
+  "title": "Theme profiles and accent",
+  "summary": "Runtime theme engine: THEMES table of named profiles (28 at formvis 1.98.4, the NodeMode 14 plus extras), readChoice/saveChoice/applyTheme, accent and intensity, user skins. Persists under localStorage key nodemode_ui_settings, shared with NodeMode by contract.",
+  "description": "Profiles overwrite the theme-owned tokens (`--bg-*`, `--border-*`, `--text-*`, `--canvas-bg`, `--grid-color`) on `documentElement`; `applyTheme` also writes the derived `--bg-node`, `--shadow-lg`, the accent and its dim/hover/tint variants and toggles `body.theme-light`. The B06 id says 14 because the NodeMode set is 14; the table in formvis 1.98.4 holds 28 entries, so a port should decide which to keep. The choice is stored as `{theme, accentColor, intensity, appearance}` with an appearance generation (3 at this commit). `?no-skin` on the address starts with the default look. Keep the table in step with the pre-paint boot snippet (`theme.prepaint-boot`).",
+  "kind": "token-set",
+  "layer": "frontend",
+  "tags": [
+    "theme",
+    "accent",
+    "skins",
+    "localStorage",
+    "zero-flash"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/themes.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "ThemeProfile",
+        "signature": "export interface ThemeProfile { label: string; vars: Record<string, string>; light?: boolean; css?: string }",
+        "doc": "One theme: display label, the CSS variables it sets on documentElement, a light flag and optional free skin CSS."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "THEMES",
+        "signature": "export const THEMES: Record<string, ThemeProfile>",
+        "doc": "The profile table keyed by theme id (28 entries at formvis 1.98.4); the default is studio."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "DEFAULT_THEME",
+        "signature": "export const DEFAULT_THEME",
+        "doc": "Id of the default profile, studio (Studio Dark)."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "DEFAULT_ACCENT",
+        "signature": "export const DEFAULT_ACCENT",
+        "doc": "Default accent colour, orange #f97316."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "OLD_DEFAULT_ACCENT",
+        "signature": "export const OLD_DEFAULT_ACCENT",
+        "doc": "The redesign's first default accent, moved to orange by appearance 3 unless it was chosen on purpose."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "DEFAULT_INTENSITY",
+        "signature": "export const DEFAULT_INTENSITY",
+        "doc": "Default accent intensity, 1."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "STORAGE_KEY",
+        "signature": "export const STORAGE_KEY",
+        "doc": "The app persists UI settings under this key as JSON {theme, accentColor, ...}"
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "ThemeChoice",
+        "signature": "export interface ThemeChoice { theme: string; accentColor: string; intensity?: number }",
+        "doc": "The persisted choice: theme id, accent colour and optional accent intensity."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "APPEARANCE",
+        "signature": "export const APPEARANCE",
+        "doc": "The appearance generation: a choice saved before Studio Dark (Phase 21) lacks it and is set aside once, so the redesign reaches everyone. Generation 3 (1.48.1): the accent defaults to orange;"
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "skinEscaped",
+        "signature": "export const skinEscaped = (): boolean => ...",
+        "doc": "True when the page address carries ?no-skin, so the default look is shown and the saved choice is kept."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "readChoice",
+        "signature": "export function readChoice(): ThemeChoice",
+        "doc": "Reads the saved ThemeChoice from nodemode_ui_settings (appearance generation 3, or 2 migrated); returns the defaults when absent, blocked or ?no-skin."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "saveChoice",
+        "signature": "export function saveChoice(choice: ThemeChoice): void",
+        "doc": "Merges a ThemeChoice into the nodemode_ui_settings JSON and stamps the appearance generation; storage failures are logged, not thrown."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "applyTheme",
+        "signature": "export function applyTheme(choice: ThemeChoice = readChoice()): void",
+        "doc": "Apply a profile and accent to the document. Mirrors applySettings(): profile vars first, then the derived --bg-node and --shadow-lg the profiles do not declare, then the accent and its dim variant."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "skinCssProblem",
+        "signature": "export function skinCssProblem(css: string): string",
+        "doc": "The reason a skin's CSS is refused, or '' when it passes: no network (url, @import, @font-face), no script, no escapes, only @media, braces balanced. The engine lints the same way."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "UserSkin",
+        "signature": "export interface UserSkin { id: string; label: string; light: boolean; version: string; author: string; vars: Record<string, string>; css?: string }",
+        "doc": "A user-supplied skin: id, label, light flag, version, author, variable map and optional free CSS."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "USER_SKIN_KEY",
+        "signature": "export const USER_SKIN_KEY",
+        "doc": "localStorage key holding the active user skin so the boot script can paint it."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "registerSkins",
+        "signature": "export function registerSkins(skins: UserSkin[]): { added: string[]; removed: string[] }",
+        "doc": "Skins from the data folder's skins folder become themes named skin-<file>; the ones loaded before are replaced. The ids gone and the ids new are returned so a picker can patch its swatches in place."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "setTheme",
+        "signature": "export function setTheme(theme: string): void",
+        "doc": "Saves the theme, applies it and dispatches nm:ui-settings-changed with detail.key theme."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "setIntensity",
+        "signature": "export function setIntensity(intensity: number): void",
+        "doc": "Preferences > Interface: how strongly the accent tints what it marks (0 to 1.5; 1 is the design's)."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "setAccent",
+        "signature": "export function setAccent(accentColor: string): void",
+        "doc": "Saves the accent colour, applies it and dispatches nm:ui-settings-changed with detail.key accentColor."
+      },
+      {
+        "file": "frontend/src/ui/themes.ts",
+        "symbol": "themeSwatchesHtml",
+        "signature": "export function themeSwatchesHtml(active: string = readChoice().theme, accent: string = readChoice().accentColor): string",
+        "doc": "Swatch markup for a theme picker, the app's .nm-theme-swatch recipe: background is the profile's --bg-secondary, the active swatch borders in the accent, every other swatch in its own --border-color."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/themes.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "USER_SKIN_KEY value formvis_user_skin",
+        "style element id fv-skin-css"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "tokens.studio-dark",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [
+      "--bg-primary",
+      "--bg-secondary",
+      "--bg-tertiary",
+      "--bg-node",
+      "--border-color",
+      "--border-light",
+      "--text-primary",
+      "--text-secondary",
+      "--text-muted",
+      "--canvas-bg",
+      "--grid-color",
+      "--accent-color",
+      "--shadow-lg"
+    ],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "theme-key-shared",
+      "text": "The persisted appearance key is nodemode_ui_settings and is shared with NodeMode by contract; its name and the appearance generation field must not change.",
+      "severity": "must"
+    },
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "boot-in-step",
+      "text": "The THEMES table and the inline PROFILES table of the pre-paint boot snippet list the same ids and the same ten surface values; change both together.",
+      "severity": "must"
+    },
+    {
+      "id": "apply-not-on-first-render",
+      "text": "applyTheme is never called from a component first render; it runs once at boot and on a theme change, so a second repaint cannot happen.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [
+    {
+      "spdx": "MIT",
+      "name": "NodeMode stylized design system: tokens, theme profiles, theme boot, dom-stable helpers, icon subset",
+      "url": "",
+      "files": [
+        "frontend/src/ui/themes.ts"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "title": "Switch theme and read the current choice",
+      "language": "ts",
+      "snippet": "const current = readChoice().theme, isLight = !!THEMES[current]?.light;\nif (systemScheme.matches && !isLight) setTheme('light');\nelse if (!systemScheme.matches && isLight) setTheme('studio');",
+      "whenToUse": "When a command needs the current theme or to cycle themes by lightness."
+    },
+    {
+      "title": "Import the theme API",
+      "language": "ts",
+      "snippet": "import { DEFAULT_THEME, THEMES, applyTheme, readChoice, registerSkins, setTheme } from '../themes';",
+      "whenToUse": "To see which symbols a settings panel pulls from the theme module."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 2
+  }
+}

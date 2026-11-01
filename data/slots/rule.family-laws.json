@@ -1,0 +1,133 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "rule.family-laws",
+  "title": "Family laws",
+  "summary": "Rules every form app obeys: SEDO edits, zero DOM flash, tokens and one z scale, no emoji or em dash, patent declines, one cloud provider (fal), no sparkle icon, commit identity, licence rules. Some are enforced by counts --check.",
+  "description": "Source of truth is three documents: `CLAUDE.md` (repo notes, patent declines, trademark and licence rules, one cloud provider, sparkle ban, commit identity), the harness `SKILL.md` section \"Laws for every change\" (12 numbered laws) and `NOTICE.md` (every shipped dependency with its licence; a new one needs a row). Declined and not to return: Content-Aware Scale by seam carving and its skin-tone protection; Poisson blending after the adaptive Content-Aware Fill; a live fill of the vacated area during the Content-Aware Move drag; limiting Selection-Aware Fill sampling by a stored mask; a face mesh in Liquify; image or model providers other than fal; the three-star sparkle icon. Items 10 to 12 are checked by `script.counts-check`; the rest are by review. Commit identity is nodemode-ai with no attribution trailers.",
+  "kind": "pattern",
+  "layer": "shared",
+  "tags": [
+    "rules",
+    "laws",
+    "licence",
+    "patents",
+    "policy"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "CLAUDE.md",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "role": "doc",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "product name and paths"
+      ]
+    },
+    {
+      "path": ".claude/skills/formvis-harness/SKILL.md",
+      "role": "doc",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "product name, routing table"
+      ]
+    },
+    {
+      "path": "NOTICE.md",
+      "role": "doc",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "dependency rows"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "script.counts-check",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "declined-never-returns",
+      "text": "Features declined for patents (seam-carving Content-Aware Scale, its skin-tone protection, Poisson blending after adaptive fill, live fill during Move drag) and declined providers are not added in any form; decline requests for them.",
+      "severity": "must"
+    },
+    {
+      "id": "sparkle-banned",
+      "text": "The three-star sparkle icon is banned app-wide under any name, including when porting from formlit.",
+      "severity": "must"
+    },
+    {
+      "id": "notice-row-per-dependency",
+      "text": "Every dependency that ships gets a row in NOTICE.md with its licence.",
+      "severity": "must"
+    },
+    {
+      "id": "commit-identity",
+      "text": "Every commit has one author and committer, nodemode-ai, and no attribution trailer.",
+      "severity": "must"
+    },
+    {
+      "id": "no-emoji-no-emdash",
+      "text": "No emoji and no U+2014 em dash anywhere (use the interpunct or a colon).",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Laws block",
+      "language": "md",
+      "snippet": "## Laws for every change\n\n1. SEDO: single-region hand edits. Never patch, diff, sed, awk or codemod a tracked file; use the Edit tool for one region per edit and the Write tool for new files.\n2. Zero DOM flash, flicker or re-render: render once, then patch in place; reserve space before content arrives. Every UI change passes `references/verification.md`.\n3. Colours and z-index come from tokens; icons come from `frontend/src/ui/icons.ts`; no icon libraries.\n4. No emoji, no U+2014 em dash (use the interpunct), near-zero comments. Decisions and removed code go in `frontend/HASHOUT_LOG.md` or `backend/HASHOUT_LOG.md` in the same turn.",
+      "whenToUse": "Quote when briefing an agent before it changes code."
+    },
+    {
+      "title": "Patent decline wording",
+      "language": "md",
+      "snippet": "- One cloud provider by design: fal. Other image or model providers are declined (harness law 11; `./formvis counts --check` fails on them), and named hosted models wait for the owner's own fal integration.",
+      "whenToUse": "Quote when refusing a provider or feature request."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 37
+  }
+}

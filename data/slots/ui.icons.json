@@ -1,0 +1,121 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.icons",
+  "title": "Inline SVG icon module",
+  "summary": "ICONS table of 239 inline currentColor SVG strings (24px viewBox) plus icon(name, size) returning a span wrapper and hasIcon(name). No icon library. Includes agent, agentChat and terminal from formlit; the three-star sparkle icon is banned.",
+  "description": "Call `icon(name, size)` inside an `el()` template. Unknown names fall back to `info`. Add a new icon as a new entry in the table; never import an icon package. `agent`, `agentChat` and `terminal` are the icons for Claude Code surfaces. Two icons (`paintbrush`, `hand`) come from Remix Icon (Apache-2.0) per NOTICE.md.",
+  "kind": "module",
+  "layer": "frontend",
+  "tags": [
+    "icons",
+    "svg",
+    "currentColor"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/icons.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/icons.ts",
+        "symbol": "ICONS",
+        "signature": "export const ICONS: Record<string, string>",
+        "doc": "Map of icon name to inline SVG string (viewBox 24, stroke currentColor)."
+      },
+      {
+        "file": "frontend/src/ui/icons.ts",
+        "symbol": "icon",
+        "signature": "export function icon(name: string, size = 16): string",
+        "doc": "Returns a span.icon wrapper of the given pixel size around the named SVG; an unknown name shows info."
+      },
+      {
+        "file": "frontend/src/ui/icons.ts",
+        "symbol": "hasIcon",
+        "signature": "export function hasIcon(name: string): boolean",
+        "doc": "True when the name is a key of ICONS."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/icons.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "icon entries that name formvis-only tools"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "inline-icons",
+      "text": "Icons are inline currentColor SVG strings from the icons module (icon(name, size)); no icon library, and the three-star sparkle icon is banned under any name.",
+      "severity": "must"
+    },
+    {
+      "id": "wrapper-aria-hidden",
+      "text": "The icon wrapper is aria-hidden; controls that carry an icon also carry an aria-label.",
+      "severity": "should"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [
+    {
+      "spdx": "MIT",
+      "name": "NodeMode stylized design system: tokens, theme profiles, theme boot, dom-stable helpers, icon subset",
+      "url": "",
+      "files": [
+        "frontend/src/ui/icons.ts"
+      ]
+    },
+    {
+      "spdx": "Apache-2.0",
+      "name": "Remix Icon paintbrush and hand icons",
+      "url": "",
+      "files": [
+        "frontend/src/ui/icons.ts"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "title": "Icon button markup",
+      "language": "ts",
+      "snippet": "`<div class=\"cv-panel-foot\"><button class=\"cv-icon-btn\" type=\"button\" data-cmd=\"play-animation\" title=\"Play\" aria-label=\"Play\">${icon('play', 16)}</button>` +\n`<button class=\"cv-icon-btn\" type=\"button\" data-cmd=\"export-gif\" title=\"Export GIF\" aria-label=\"Export GIF\">${icon('download', 16)}</button>` +",
+      "whenToUse": "When adding an icon-only button to a panel footer."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 8
+  }
+}

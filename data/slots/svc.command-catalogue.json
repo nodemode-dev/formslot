@@ -1,0 +1,237 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "svc.command-catalogue",
+  "title": "Command catalogue",
+  "summary": "One catalogue of runnable ids (commands, tools, options, actions) with words (group, description, when, params, risky) feeding the palette, the MCP command tools and ./formvis cli. Built in the window, mirrored by the engine, gated by counts --commands --check.",
+  "description": "Frontend `catalogue.ts` builds entries from the live registry (commands, every tool and option, actions) and runs them (`runCommand`, `runCommands` as one history step); `command-meta.ts` holds the words, `metaFor(id, label)` returns them. `routers/commands.py` keeps the last mirror the window posts to `/api/commands/catalogue` and serves list, describe and run (run is forwarded to the window through the MCP bridge). `setup/cli.py` is the command line that uses these routes and `setup/line_counts.py --commands` is the size and word gate (minimum 620 ids). Imports the Commands registry in ../ui/commands (the palette slot, not seeded).",
+  "kind": "service",
+  "layer": "shared",
+  "tags": [
+    "commands",
+    "catalogue",
+    "mcp",
+    "cli",
+    "palette"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/automation/catalogue.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "CatalogueEntry",
+        "signature": "export interface CatalogueEntry { ... }",
+        "doc": "One catalogue row: id, label, kind (command, tool, option or action), group, description, when-to-use, params, mutates and risky flags, keys."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "RunResult",
+        "signature": "export interface RunResult { ok: boolean; result?: unknown; error?: string }",
+        "doc": "Outcome of running an id: ok, result or error."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "CatalogueDeps",
+        "signature": "export interface CatalogueDeps { ... }",
+        "doc": "What the app hands the catalogue: engine, commands and the filter/adjustment/relight appliers."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "listCommands",
+        "signature": "export function listCommands(filter?: { group?: string; text?: string }): CatalogueEntry[]",
+        "doc": "Lists entries, optionally filtered by group or text."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "describeCommand",
+        "signature": "export function describeCommand(id: string): CatalogueEntry | null",
+        "doc": "One entry by id, or null."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "catalogueReport",
+        "signature": "export function catalogueReport(): { size: number; missing: string[]; groups: Record<string, number> }",
+        "doc": "Size, ids lacking metadata and a count per group; the data behind counts --commands --check."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "runCommand",
+        "signature": "export async function runCommand(id: string, params: Record<string, unknown> = {}): Promise<RunResult>",
+        "doc": "Runs one id with params and returns a RunResult."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "runCommands",
+        "signature": "export async function runCommands(list: Array<{ id: string; params?: Record<string, unknown> }>, name = 'Run Commands'): Promise<{ ok: boolean; results: RunResult[]; error?: string }>",
+        "doc": "Runs ids in order; more than one is one history step; stops at the first failure and says which."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "attachCatalogue",
+        "signature": "export function attachCatalogue(d: CatalogueDeps): void",
+        "doc": "Stores the app deps and the command registry, then rebuilds and mirrors the catalogue to /api/commands/catalogue 600 ms after each registry change."
+      },
+      {
+        "file": "frontend/src/automation/catalogue.ts",
+        "symbol": "catalogue",
+        "signature": "export const catalogue",
+        "doc": "The facade object: listCommands, describeCommand, runCommand, runCommands, report."
+      },
+      {
+        "file": "frontend/src/automation/command-meta.ts",
+        "symbol": "CommandMeta",
+        "signature": "export interface CommandMeta { group: string; description: string; when: string; params?: Record<string, CommandParam>; mutates?: boolean; risky?: boolean }",
+        "doc": "The words for a command: group, description, when to use, parameters, mutates and risky."
+      },
+      {
+        "file": "frontend/src/automation/command-meta.ts",
+        "symbol": "metaFor",
+        "signature": "export function metaFor(id: string, label: string): CommandMeta | null",
+        "doc": "Metadata for an id (or null when none exists, which counts --commands --check reports)."
+      }
+    ],
+    "commands": [],
+    "routes": [
+      {
+        "method": "POST",
+        "path": "/api/commands/catalogue",
+        "handler": "mirror",
+        "requestSchemaRef": "Mirror",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/commands.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commands",
+        "handler": "catalogue",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/commands.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/commands/{cid}",
+        "handler": "describe",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/commands.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/commands/{cid}",
+        "handler": "run",
+        "requestSchemaRef": "Run",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/commands.py"
+      }
+    ],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/automation/catalogue.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "engine, filter and tool imports"
+      ]
+    },
+    {
+      "path": "frontend/src/automation/command-meta.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "the words table"
+      ]
+    },
+    {
+      "path": "backend/app/routers/commands.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "svc.mcp-server",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [
+      {
+        "name": "fastapi",
+        "range": "0.141.1"
+      }
+    ],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "loopback-only",
+      "text": "The engine is reached on loopback only, behind the app-wide LocalGuard middleware (app/core/local_guard.py, not in this corpus); routes that act (start processes, write settings or secrets, WebSockets) also check the request origin with require_local or origin_ok.",
+      "severity": "must"
+    },
+    {
+      "id": "every-command-has-words",
+      "text": "Every command and tool has metadata (group, description, when); ./formvis counts --commands --check fails while one lacks it or the catalogue is under 620 ids.",
+      "severity": "must"
+    },
+    {
+      "id": "three-surfaces-one-catalogue",
+      "text": "Palette, MCP command tools and the CLI read this one catalogue; do not add a command to one surface only.",
+      "severity": "must"
+    },
+    {
+      "id": "sync-skills-after-change",
+      "text": "After adding or renaming commands, open the window once and run agents sync so the generated references follow.",
+      "severity": "should"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "The facade",
+      "language": "ts",
+      "snippet": "export const catalogue = { listCommands, describeCommand, runCommand, runCommands, report: catalogueReport };",
+      "whenToUse": "Hand this object to the agent bridge or the script sandbox."
+    },
+    {
+      "title": "List and describe over HTTP",
+      "language": "py",
+      "snippet": "@router.get(\"\")\ndef catalogue(group: str = \"\", text: str = \"\") -> dict:\n    \"\"\"The catalogue as the window last mirrored it; group and text narrow it. live says whether a window is answering now.\"\"\"\n    _load()\n    g, t = group.strip().lower(), text.strip().lower()\n    rows = [c for c in _state[\"commands\"] if (not g or str(c.get(\"group\", \"\")).lower() == g)\n            and (not t or t in f\"{c.get('id', '')} {c.get('label', '')} {c.get('description', '')} {c.get('when', '')}\".lower())]\n    return {\"size\": _state[\"size\"], \"shown\": len(rows), \"missing\": _state[\"missing\"], \"live\": mcp._live(), \"commands\": rows,\n            \"hint\": \"\" if _state[\"commands\"] else \"The catalogue is empty: open the formvis window (./formvis boot), wait a few seconds, then ask again.\"}",
+      "whenToUse": "Clients and the CLI list the catalogue with group and text filters."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 24
+  }
+}

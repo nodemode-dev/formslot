@@ -1,0 +1,304 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "svc.mcp-server",
+  "title": "MCP server",
+  "summary": "Streamable-HTTP MCP server inside the engine (POST/GET/DELETE /mcp, versions 2026-07-28 and 2025-11-25) with a TOOLS list built by a _tool schema helper, a pack of extra tools, path confinement, per-client approval, and a stdio launcher (setup/mcp_stdio.py) for Claude Desktop.",
+  "description": "Tools are declared with `_tool(name, description, props, required, **hints)` (about 127 call sites in mcp.py plus `PACK_TOOLS` from mcp_pack.py, with `USE_WHEN` words per tool). Calls are admitted, logged and approved through `services/agents.py`; tools that touch the window are queued for the browser bridge (`/api/mcp/bridge/next`, `/result`, `/changed`, `/progress`, `/stop`), which is `svc.agent-bridge` on the other side; file arguments are confined by `_confined`/`_path` and system locations are refused. `CONTROL_METHODS` maps ui.inspect, ui.state, ui.screenshot, ui.menu.list, ui.menu.invoke, ui.set, ui.dialog, ui.pointer, ui.key, window, app.open, app.save, app.export and app.roots to bridge methods. `setup/mcp_stdio.py` forwards a stdio client to /mcp and can start the engine or a headless window; `.mcp.json` registers it as `./formvis mcp`. Imports fal_run (cloud provider slot, not seeded).",
+  "kind": "service",
+  "layer": "engine",
+  "tags": [
+    "mcp",
+    "tools",
+    "json-rpc",
+    "stdio",
+    "bridge",
+    "consent"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "backend/app/routers/mcp.py",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_tool",
+        "signature": "def _tool(name: str, description: str, props: dict, required: list[str] | None = None, **hints: bool) -> dict",
+        "doc": "Builds one tool definition: name, description, inputSchema (object with props and required) and readOnly, destructive and idempotent hints."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_confined",
+        "signature": "def _confined(path: Path) -> None",
+        "doc": "Refuses a system location. `path` is already resolved, so a link into one is caught."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_path",
+        "signature": "def _path(raw, kinds: set, reading: bool, overwrite: bool = False) -> Path",
+        "doc": "Validates an absolute file path argument (kind, existence or parent folder, no overwrite unless true) and confines it; ValueError with advice otherwise."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_refused",
+        "signature": "def _refused(name: str, args: dict) -> str | None",
+        "doc": "Why a call's file path is refused (system location, existing file without overwrite, wrong kind), checked before the person is asked to approve anything; None when the path is fine or the tool has none."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_run",
+        "signature": "async def _run(name: str, args: dict) -> dict",
+        "doc": "A tool call: files at paths handled here, around the window's part; everything else in the window."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_call",
+        "signature": "async def _call(name: str, args: dict) -> dict",
+        "doc": "Runs a tool in the window; its MCP result. formvis is opened if no window is, and the person asked once if outside agents are not allowed; each failure says what to do next."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_window_only",
+        "signature": "async def _window_only(name: str, args: dict) -> str | None",
+        "doc": "Why a command is refused to every agent, the in-app Claude Code included; None when none of the call's commands is the window's own."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_risk",
+        "signature": "async def _risk(name: str, args: dict) -> str | None",
+        "doc": "Why a call cannot be undone (a file written, or a catalogue command marked risky); None when Undo covers it."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_agent_call",
+        "signature": "async def _agent_call(client: str, name: str, args: dict) -> dict",
+        "doc": "A tool call as an outside agent's: refused when agents are off or this client is denied, held for the person's approval when it is risky under the Ask policy, and noted in the activity feed either way."
+      },
+      {
+        "file": "backend/app/routers/mcp.py",
+        "symbol": "_budgeted",
+        "signature": "def _budgeted(name: str, result: dict) -> dict",
+        "doc": "A reply within the agent budgets (agents.limits): text cut at text_chars with a note of how much was left out, structured data over the same size dropped with a note, and a picture over image_bytes refused with how to ask for less."
+      },
+      {
+        "file": "backend/app/routers/mcp_pack.py",
+        "symbol": "_tool",
+        "signature": "def _tool(name: str, description: str, props: dict, required: list[str] | None = None, **hints: bool) -> dict",
+        "doc": "The same tool-definition helper for the bundled plugins tools (EU AI label, Film pack, 3D object layers)."
+      }
+    ],
+    "commands": [],
+    "routes": [
+      {
+        "method": "POST",
+        "path": "/api/mcp/bridge/changed",
+        "handler": "bridge_changed",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/mcp/bridge/progress",
+        "handler": "bridge_progress",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "GET",
+        "path": "/mcp",
+        "handler": "mcp_stream",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "DELETE",
+        "path": "/mcp",
+        "handler": "mcp_end",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "POST",
+        "path": "/mcp",
+        "handler": "mcp",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/mcp/bridge/next",
+        "handler": "bridge_next",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/mcp/bridge/result",
+        "handler": "bridge_result",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/mcp/bridge/stop",
+        "handler": "bridge_stop",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/mcp/status",
+        "handler": "status",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/mcp/registration",
+        "handler": "registration",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/mcp.py"
+      }
+    ],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "backend/app/routers/mcp.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "product name in INSTRUCTIONS and STRATEGY",
+        "tool list"
+      ]
+    },
+    {
+      "path": "backend/app/routers/mcp_pack.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "pack tool list"
+      ]
+    },
+    {
+      "path": "setup/mcp_stdio.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "env FORMVIS_MCP_URL, FORMVIS_MCP_ATTACH",
+        "default port 8190"
+      ]
+    },
+    {
+      "path": ".mcp.json",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "server name formvis",
+        "launcher path"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "svc.claude-code-agents",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.terminal-dock",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [
+      {
+        "name": "fastapi",
+        "range": "0.141.1"
+      }
+    ],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "loopback-only",
+      "text": "The engine is reached on loopback only, behind the app-wide LocalGuard middleware (app/core/local_guard.py, not in this corpus); routes that act (start processes, write settings or secrets, WebSockets) also check the request origin with require_local or origin_ok.",
+      "severity": "must"
+    },
+    {
+      "id": "origin-check",
+      "text": "A browser request to /mcp with a non-loopback Origin is refused (a request with no Origin, as from a program, is allowed); the stdio launcher is the path for other clients.",
+      "severity": "must"
+    },
+    {
+      "id": "path-confinement",
+      "text": "File arguments are resolved and refused when they are in a system location or outside the configured agent roots.",
+      "severity": "must"
+    },
+    {
+      "id": "consent-for-risky",
+      "text": "Calls that overwrite files go through agents.approval unless the client policy is allow.",
+      "severity": "must"
+    },
+    {
+      "id": "sync-after-catalogue-change",
+      "text": "After changing the MCP catalogue in mcp.py run agents sync; the backend tests fail until the generated references match.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Register the server for a project",
+      "language": "json",
+      "snippet": "    \"formvis\": {\n      \"type\": \"stdio\",\n      \"command\": \"${CLAUDE_PROJECT_DIR:-.}/formvis\",\n      \"args\": [\"mcp\"]\n    }\n  }\n}",
+      "whenToUse": "Check in next to the repo so Claude Code can start the server."
+    },
+    {
+      "title": "Tool schema helper",
+      "language": "py",
+      "snippet": "def _tool(name: str, description: str, props: dict, required: list[str] | None = None, **hints: bool) -> dict:\n    return {\"name\": name, \"description\": description, \"inputSchema\": {\"type\": \"object\", \"properties\": props, \"required\": required or [], \"additionalProperties\": False},\n            \"annotations\": {\"readOnlyHint\": hints.get(\"read\", False), \"destructiveHint\": hints.get(\"destructive\", False), \"idempotentHint\": hints.get(\"idempotent\", False), \"openWorldHint\": hints.get(\"open\", False)}}\n\n\nCONTROL_METHODS = {\"ui.inspect\": \"ui_inspect\", \"ui.state\": \"ui_state\", \"ui.screenshot\": \"ui_screenshot\", \"ui.menu.list\": \"ui_menu_list\", \"ui.menu.invoke\": \"ui_menu_invoke\", \"ui.set\": \"ui_set\", \"ui.dialog\": \"ui_dialog\",\n                   \"ui.pointer\": \"ui_pointer\", \"ui.key\": \"ui_key\", \"window\": \"ui_window\", \"app.open\": \"open_file\", \"app.save\": \"save_project\", \"app.export\": \"export_image\", \"app.roots\": \"file_roots\"}\n_ID = {\"type\": \"string\", \"description\": \"A layer id from get_document.\"}",
+      "whenToUse": "Declare a new tool with its schema and annotation hints."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 25
+  }
+}

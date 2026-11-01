@@ -1,0 +1,145 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.chat-pane",
+  "title": "Chat pane (Claude Code stream)",
+  "summary": "The terminal dock Chat tab: Claude Code run in stream-JSON mode with the app MCP server attached; messages, tool chips and allow/deny permission cards stream in over a WebSocket, with a permission-mode select and a hand-off to a Claude Code terminal tab. From formlit.",
+  "description": "Built once; messages and tool chips are appended and status text is patched in place. Talks to the engine through the /api/agent/claude routes (`routers/claude_code.py`, slot `svc.claude-code-agents`) via the app api client (`claudeStatus`, `claudeStart`, `claudeSend`, `claudeStop`, `claudeAllow`) and the stream `/agent/claude/stream`. B06 lists `services/llm.py` beside this file, but chat-pane.ts does not use it: llm.py is the separate assistant provider service, so it is not part of this slot. Imports ../io/api and ./i18n (not seeded).",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "chat",
+    "claude-code",
+    "stream",
+    "permissions"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/chat-pane.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/chat-pane.ts",
+        "symbol": "ChatPane",
+        "signature": "export class ChatPane",
+        "doc": "The dock's Chat tab: Claude Code run in stream-JSON mode with formvis's MCP server attached, its messages streamed in from the engine. Built once; messages, tool chips and permission cards are appended, status text is patched in place."
+      },
+      {
+        "file": "frontend/src/ui/chat-pane.ts",
+        "symbol": "ChatPane.isBusy",
+        "signature": "isBusy(): boolean",
+        "doc": "True while a turn is running."
+      },
+      {
+        "file": "frontend/src/ui/chat-pane.ts",
+        "symbol": "ChatPane.load",
+        "signature": "async load(): Promise<void>",
+        "doc": "Marks the pane wanted, connects the stream socket and refreshes status."
+      },
+      {
+        "file": "frontend/src/ui/chat-pane.ts",
+        "symbol": "ChatPane.release",
+        "signature": "release(): void",
+        "doc": "Marks the pane unwanted and closes the stream socket."
+      },
+      {
+        "file": "frontend/src/ui/chat-pane.ts",
+        "symbol": "ChatPane.send",
+        "signature": "async send(text: string): Promise<void>",
+        "doc": "Sends the text as the next turn, starting Claude Code first if it is not running; ignored while busy."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [
+      "ft-chat",
+      "ft-chat-bar",
+      "ft-chat-log",
+      "ft-chat-tool",
+      "ft-chat-allow",
+      "ft-chat-deny",
+      "ft-chat-handoff"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/chat-pane.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "API client method names",
+        "ft-chat class prefix"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.dom-helpers",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.icons",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "strings-through-t",
+      "text": "User-visible strings go through t() from the i18n module; the English text is the key.",
+      "severity": "should"
+    },
+    {
+      "id": "inline-icons",
+      "text": "Icons are inline currentColor SVG strings from the icons module (icon(name, size)); no icon library, and the three-star sparkle icon is banned under any name.",
+      "severity": "must"
+    },
+    {
+      "id": "permission-cards",
+      "text": "A tool the agent wants to run that needs consent is shown as an allow or deny card, and the click is answered through the engine (claudeAllow).",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Pane created lazily by the dock",
+      "language": "ts",
+      "snippet": "  const chat = new ChatPane();\n  chat.onFail = (err) => this.warn(err);\n  chat.onHandoff = (session) => void this.claude(undefined, session);\n  chat.onBash = () => void this.sync();\n  this.chat = chat;\n  this.stage.appendChild(chat.root);\n}",
+      "whenToUse": "Create the pane when the Chat tab is first shown and wire its callbacks."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 22
+  }
+}

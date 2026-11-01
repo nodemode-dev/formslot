@@ -1,0 +1,416 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "svc.model-manager",
+  "title": "Model manager and durable jobs",
+  "summary": "Pinned model downloads (per-file SHA-256 pins, size limit, per-model source override, Hugging Face token, folder scan), a small worker-pool job queue, atomic durable JSON stores, a cancellable subprocess runner and models-folder paths. Ported formcut to formvis.",
+  "description": "A model is a dict in `MODELS` with a license, optional consent key, `maxFileBytes` and `files` mapping a relative name to a URL pinned to a commit. `download` streams each file to `<name>.download`, hashes it, refuses a file with no entry in `PINNED`, deletes a mismatching file and writes a `.json` sidecar with url, sha256 and license. `jobs.submit` runs operations on a pool (429 when 8 are active; finished jobs above 100 are pruned). `durable.write_json` writes atomically with a `.bak`, `read_json` sets a damaged file aside and never reads it as empty. Routes live under /api/models and /api/jobs. The `MODELS`/`PINNED` tables are formvis data (the relight pin matches formlit). jobs.py imports `.orchestration.publish` (not seeded).",
+  "kind": "service",
+  "layer": "engine",
+  "tags": [
+    "models",
+    "download",
+    "sha256",
+    "jobs",
+    "durable",
+    "onnx"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "backend/app/localgen/model_manager.py",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "model_file",
+        "signature": "def model_file(name: str) -> Path",
+        "doc": "Where a model file actually is: the model folder, else the bundle."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "providers",
+        "signature": "def providers() -> list[str]",
+        "doc": "The execution providers to hand a session: the device chosen in Preferences (Automatic takes the best one here)."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "ready",
+        "signature": "def ready(model: str) -> bool",
+        "doc": "Every file of the model is there: weights past the one-kilobyte floor, a config or licence file merely non-empty."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "runtime",
+        "signature": "def runtime()",
+        "doc": "BG6: what this machine offers and which provider sessions will use."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "list_models",
+        "signature": "def list_models()",
+        "doc": "GET /api/models: every model with id, name, license, ready, downloading, files and managedBy."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "download",
+        "signature": "def download(model: str, report, cancelled)",
+        "doc": "Downloads every file of a model into the models folder with a size limit; each file must match its pinned SHA-256 or it is deleted and the download fails."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "start_download",
+        "signature": "def start_download(model: str)",
+        "doc": "POST /api/models/{model}/download: runs a tracked download job and returns 202."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "source_for",
+        "signature": "def source_for(model: str, name: str, default: str) -> str",
+        "doc": "The URL to fetch a model file from: upstream, a mirror, or a custom URL."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "set_source",
+        "signature": "def set_source(model: str, mode: str, url: str | None) -> dict",
+        "doc": "Record where a model should be fetched from."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "hf_token",
+        "signature": "def hf_token() -> str | None",
+        "doc": "The Hugging Face access token, for models that sit behind a licence: from the system's password store."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "scan_folder",
+        "signature": "def scan_folder(folder: Path) -> dict",
+        "doc": "Finds the helper models' files in another folder (a ComfyUI models folder, say), under any name or layout: a file is taken when its SHA-256 matches the pin of a file not yet in the model folder, and is linked in, not copied."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "remove_model",
+        "signature": "def remove_model(model: str)",
+        "doc": "Delete a downloaded model's files from the model folder (those managed by the Krea 2 and klein cards have their own)."
+      },
+      {
+        "file": "backend/app/localgen/model_manager.py",
+        "symbol": "pin_for",
+        "signature": "def pin_for(name: str) -> str | None",
+        "doc": "The pinned SHA-256 for a file name, or None."
+      },
+      {
+        "file": "backend/app/localgen/durable.py",
+        "symbol": "set_aside",
+        "signature": "def set_aside(path: Path, reason: Exception | str) -> Path",
+        "doc": "A damaged file moved out of the way, kept for a person to look at (never overwritten)."
+      },
+      {
+        "file": "backend/app/localgen/durable.py",
+        "symbol": "read_json",
+        "signature": "def read_json(path: Path, default)",
+        "doc": "The file's contents; its backup when it is missing or damaged; else default (a fresh copy of it)."
+      },
+      {
+        "file": "backend/app/localgen/durable.py",
+        "symbol": "write_json",
+        "signature": "def write_json(path: Path, data, *, private: bool = False, indent: int | None = 2, keep_backup: bool = True) -> None",
+        "doc": "The file written whole and moved into place, the version it replaces kept as <name>.bak."
+      },
+      {
+        "file": "backend/app/localgen/jobs.py",
+        "symbol": "submit",
+        "signature": "def submit(kind: str, operation) -> dict",
+        "doc": "Queues an operation on the worker pool (429 when 8 are queued or running; finished jobs above 100 are pruned) and returns the job record."
+      },
+      {
+        "file": "backend/app/localgen/jobs.py",
+        "symbol": "status",
+        "signature": "def status(job_id: str) -> dict",
+        "doc": "GET /api/jobs/{job_id}: the job record without its cancel handle; 404 when unknown."
+      },
+      {
+        "file": "backend/app/localgen/jobs.py",
+        "symbol": "cancel",
+        "signature": "def cancel(job_id: str) -> dict",
+        "doc": "DELETE /api/jobs/{job_id}: sets the job cancel flag."
+      },
+      {
+        "file": "backend/app/localgen/jobs.py",
+        "symbol": "file",
+        "signature": "def file(job_id: str)",
+        "doc": "GET /api/jobs/{job_id}/file: the finished job output file; 409 until done."
+      },
+      {
+        "file": "backend/app/localgen/processes.py",
+        "symbol": "communicate",
+        "signature": "def communicate(process, data=None, timeout=600, cancelled=lambda: False)",
+        "doc": "Runs process.communicate in short slices so cancelled() and the timeout (default 600 s) are honoured, killing the process on exit."
+      },
+      {
+        "file": "backend/app/localgen/paths.py",
+        "symbol": "saved_folder",
+        "signature": "def saved_folder() -> str",
+        "doc": "The helper model folder chosen in Preferences (used at the next engine start); empty when none was chosen."
+      },
+      {
+        "file": "backend/app/localgen/paths.py",
+        "symbol": "session",
+        "signature": "def session(path) -> \"object\"",
+        "doc": "An ONNX Runtime session for a local model (1.53.4): the best providers, and the CPU memory arena off. With it on, SAM 2.1 and U^2-Net held 2,575 MB after three runs each; off, 687 MB (a peak of 1,314 MB), for a little speed."
+      }
+    ],
+    "commands": [],
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/api/models/runtime",
+        "handler": "runtime",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/models",
+        "handler": "list_models",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/models/{model}/download",
+        "handler": "start_download",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/models/token",
+        "handler": "get_token",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/models/token",
+        "handler": "put_token",
+        "requestSchemaRef": "TokenBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/models/scan",
+        "handler": "scan",
+        "requestSchemaRef": "ScanBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/models/folder",
+        "handler": "get_folder",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/models/folder",
+        "handler": "put_folder",
+        "requestSchemaRef": "FolderBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/models/{model}",
+        "handler": "remove_model",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/models/sources",
+        "handler": "get_sources",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/models/{model}/source",
+        "handler": "put_source",
+        "requestSchemaRef": "SourceBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/model_manager.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/jobs/{job_id}",
+        "handler": "status",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/jobs.py"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/jobs/{job_id}",
+        "handler": "cancel",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/jobs.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/jobs/{job_id}/file",
+        "handler": "file",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/localgen/jobs.py"
+      }
+    ],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "backend/app/localgen/model_manager.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "MODELS and PINNED tables",
+        "FORMVIS_MODELS_DIR env"
+      ]
+    },
+    {
+      "path": "backend/app/localgen/durable.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    },
+    {
+      "path": "backend/app/localgen/jobs.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "orchestration publish hook"
+      ]
+    },
+    {
+      "path": "backend/app/localgen/processes.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    },
+    {
+      "path": "backend/app/localgen/paths.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "FORMVIS_MODELS_DIR env",
+        "data folder names"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [],
+    "npm": [],
+    "python": [
+      {
+        "name": "fastapi",
+        "range": "0.141.1"
+      },
+      {
+        "name": "httpx",
+        "range": "0.28.1"
+      },
+      {
+        "name": "pydantic",
+        "range": "*"
+      }
+    ],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "loopback-only",
+      "text": "The engine is reached on loopback only, behind the app-wide LocalGuard middleware (app/core/local_guard.py, not in this corpus); routes that act (start processes, write settings or secrets, WebSockets) also check the request origin with require_local or origin_ok.",
+      "severity": "must"
+    },
+    {
+      "id": "pinned-checksum-or-refuse",
+      "text": "A downloaded file with no pinned SHA-256 is refused and a mismatching file is deleted; nothing unverified lands in the models folder.",
+      "severity": "must"
+    },
+    {
+      "id": "atomic-json",
+      "text": "Small stores are written through durable.write_json (temp file, backup, replace); a damaged store is set aside, never read as empty and saved over.",
+      "severity": "must"
+    },
+    {
+      "id": "size-limit",
+      "text": "Each download is capped by the model maxFileBytes (default 2,000,000,000).",
+      "severity": "should"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [
+    {
+      "spdx": "BSD-3-Clause",
+      "name": "httpx",
+      "url": "",
+      "files": [
+        "backend/app/localgen/model_manager.py"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "title": "Start a pinned download job",
+      "language": "py",
+      "snippet": "@router.post(\"/{model}/download\", status_code=202)\ndef start_download(model: str):\n    if model not in MODELS:\n        raise HTTPException(404, \"Unknown model\")\n    if MODELS[model].get(\"consent\") == \"krea-2\":\n        from .krea2 import consent",
+      "whenToUse": "The route that begins a download and returns a job to poll."
+    },
+    {
+      "title": "Atomic JSON write signature",
+      "language": "py",
+      "snippet": "def write_json(path: Path, data, *, private: bool = False, indent: int | None = 2, keep_backup: bool = True) -> None:\n    \"\"\"The file written whole and moved into place, the version it replaces kept as <name>.bak.\"\"\"",
+      "whenToUse": "Use for any small store that must survive a crash mid-write."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 29
+  }
+}

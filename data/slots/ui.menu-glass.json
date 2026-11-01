@@ -1,0 +1,282 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.menu-glass",
+  "title": "Glass menus and native menu bridge",
+  "summary": "PopupMenu (context and sub-menus with keyboard model), MenuBar over MenuDef[], trimMenu/setMenuStyle for Edit > Menus, and NativeMenus that mirrors the same defs into the macOS native menu bar through Tauri. Menu items are command ids resolved through a Commands object.",
+  "description": "Menus are data: `MenuItem = commandId | \"-\" | {label, items}`. `PopupMenu` builds its panel once and `setItems` patches it; `MenuBar` hosts the top-level defs and does not open from the keyboard while a dialog is open (`anyDialogOpen`). On macOS desktop `wantsNativeMenus()` is true unless the user keeps menus in the window (`formvis.menusInWindow`), and `NativeMenus` builds Tauri native menus from the same defs; Edit keys go to a focused text field through the shell `text_edit` command. The glass look lives in `panels.css` (`cv-menu*`). Imports `./commands` (Commands) and `./i18n`, which are not seeded in this corpus.",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "menu",
+    "context-menu",
+    "menubar",
+    "native-menu",
+    "tauri"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/menu.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "MenuItem",
+        "signature": "export type MenuItem = string | '-' | SubMenu",
+        "doc": "A command id, a separator, or a submenu of further items."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "SubMenu",
+        "signature": "export interface SubMenu { label: string; items: MenuItem[] }",
+        "doc": "A submenu item: a label and its own item list."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "MENU_KEEP",
+        "signature": "export const MENU_KEEP: readonly string[]",
+        "doc": "Commands that stay in the menus whatever is hidden, so the way back is never lost."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "setMenuStyle",
+        "signature": "export function setMenuStyle(hidden: readonly string[], colors: Record<string, string>): void",
+        "doc": "Sets the command ids hidden from the menus and the colour name per item (Edit > Menus)."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "trimMenu",
+        "signature": "export function trimMenu(items: MenuItem[]): MenuItem[]",
+        "doc": "Items without the hidden commands; a submenu left empty goes too, and no separator is left leading, trailing or doubled."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "PopupMenu",
+        "signature": "export class PopupMenu",
+        "doc": "One menu panel (also used as a context menu): keyboard model, sub-menus, relabel on language change."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "MenuDef",
+        "signature": "export interface MenuDef { label: string; items: MenuItem[] | (() => MenuItem[]) }",
+        "doc": "A menubar menu: its label and its items; a function is called afresh each time the menu opens."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "MenuBar",
+        "signature": "export class MenuBar",
+        "doc": "The top menu bar: one button and PopupMenu per MenuDef; opens on click or hover when another is open."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "PopupMenu.setItems",
+        "signature": "setItems(items: MenuItem[]): void",
+        "doc": "Rebuilds the panel rows from a MenuItem list."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "PopupMenu.openAt",
+        "signature": "openAt(x: number, y: number): void",
+        "doc": "Refreshes labels, checks and enabled states, then shows the menu at `x, y`, kept within the window; a menu taller than the window scrolls."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "PopupMenu.relabel",
+        "signature": "relabel(): void",
+        "doc": "Re-labels every row and submenu in place after a language change; only text changes, no node is rebuilt."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "PopupMenu.close",
+        "signature": "close(): void",
+        "doc": "Closes the panel and its open sub-menu."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "MenuBar.open",
+        "signature": "open(i: number, keyboard = false): void",
+        "doc": "Opens menu i; keyboard true returns focus to the previous element on close."
+      },
+      {
+        "file": "frontend/src/ui/menu.ts",
+        "symbol": "MenuBar.close",
+        "signature": "close(): void",
+        "doc": "Closes the open menu."
+      },
+      {
+        "file": "frontend/src/ui/native-menu.ts",
+        "symbol": "wantsNativeMenus",
+        "signature": "export const wantsNativeMenus = (): boolean => ...",
+        "doc": "Formvis's menus in the macOS menu bar when it runs as the desktop app (Phase 21, UI_SPEC.md section 2: the target's menus are the system's)."
+      },
+      {
+        "file": "frontend/src/ui/native-menu.ts",
+        "symbol": "MENUS_IN_WINDOW_KEY",
+        "signature": "export const MENUS_IN_WINDOW_KEY",
+        "doc": "The person's choice to keep the menus in the window on macOS (View > Menus in Window); it applies at the next start."
+      },
+      {
+        "file": "frontend/src/ui/native-menu.ts",
+        "symbol": "menusInWindow",
+        "signature": "export function menusInWindow(): boolean",
+        "doc": "True when the user chose to keep menus in the window (stored under formvis.menusInWindow)."
+      },
+      {
+        "file": "frontend/src/ui/native-menu.ts",
+        "symbol": "accelerator",
+        "signature": "export function accelerator(combo: string | undefined): string | null",
+        "doc": "Formvis's key combo ('Mod+Shift+S') as a Tauri accelerator ('CmdOrCtrl+Shift+S'); null for what Tauri has no name for."
+      },
+      {
+        "file": "frontend/src/ui/native-menu.ts",
+        "symbol": "textFieldFocused",
+        "signature": "export function textFieldFocused(): boolean",
+        "doc": "True when a text-editing element has focus, so Edit keys go to it."
+      },
+      {
+        "file": "frontend/src/ui/native-menu.ts",
+        "symbol": "NativeMenus",
+        "signature": "export class NativeMenus",
+        "doc": "Builds Tauri native menus from the same MenuDef list and refreshes check and enabled state."
+      },
+      {
+        "file": "frontend/src/ui/native-menu.ts",
+        "symbol": "NativeMenus.build",
+        "signature": "async build(): Promise<void>",
+        "doc": "Builds (or rebuilds) the menu bar; later calls while one is building are folded into one more build."
+      },
+      {
+        "file": "frontend/src/ui/native-menu.ts",
+        "symbol": "NativeMenus.refresh",
+        "signature": "refresh(): void",
+        "doc": "The enabled and tick states, refreshed a moment after the app changes (grouped, so a burst of changes is one pass)."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [
+      "cv-menu",
+      "cv-menu-item",
+      "cv-menu-sub",
+      "cv-menu-check",
+      "cv-menu-label",
+      "cv-menu-keys",
+      "cv-menu-sep",
+      "cv-menu-btn"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/menu.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": []
+    },
+    {
+      "path": "frontend/src/ui/native-menu.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "storage key formvis.menusInWindow"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.dom-helpers",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.icons",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.dialog-kit",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "css.panels-dialogs",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [
+      {
+        "name": "@tauri-apps/api",
+        "range": "2.11.1"
+      }
+    ],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": [
+      "text_edit"
+    ]
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "strings-through-t",
+      "text": "User-visible strings go through t() from the i18n module; the English text is the key.",
+      "severity": "should"
+    },
+    {
+      "id": "inline-icons",
+      "text": "Icons are inline currentColor SVG strings from the icons module (icon(name, size)); no icon library, and the three-star sparkle icon is banned under any name.",
+      "severity": "must"
+    },
+    {
+      "id": "menus-are-commands",
+      "text": "Menu items are command ids; labels, keys and enabled state come from the Commands object so menus, palette and shortcuts cannot disagree.",
+      "severity": "must"
+    },
+    {
+      "id": "keep-way-back",
+      "text": "The ids in MENU_KEEP (edit-menus, shortcuts, settings) stay in the menus whatever the user hides.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Menu bar and native bridge at boot",
+      "language": "ts",
+      "snippet": "const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);\n// The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.\nif (wantsNativeMenus()) {\n  const native = new NativeMenus(commands, () => menus);\n  void native.build().catch(() => undefined);\n  for (const ev of ['active', 'doc', 'selection', 'history', 'tool'] as const) engine.on(ev, () => native.refresh());\n  engine.on('projects', () => { void native.build().catch(() => undefined); });   // Open Recent and what is enabled\n  onLanguage(() => { void native.build().catch(() => undefined); });",
+      "whenToUse": "When mounting the top menu bar in a form app (desktop macOS also gets native menus)."
+    },
+    {
+      "title": "Context menu instance",
+      "language": "ts",
+      "snippet": "const contextMenu = new PopupMenu(commands, null, true);\n// Panel menus (the target's •••): each group's own commands, opened below its button.",
+      "whenToUse": "When an app needs a right-click menu built from command ids."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 9
+  }
+}

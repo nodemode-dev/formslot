@@ -1,0 +1,239 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.dom-helpers",
+  "title": "DOM helpers (no-flash)",
+  "summary": "Element builder and in-place patch helpers used by every UI file: el, q, mountOnce, patchList (keyed reconcile), setText/setClass/setHidden/setValue and friends, reserve, swapMedia, delayedIndicator, revealApp. The safe no-innerHTML pattern behind the zero-flash law.",
+  "description": "Build a subtree once with `el(html)` or `mountOnce(host, html)` (which throws if the host already has children), then patch with the `set*` helpers, which write only when the value differs, and `patchList` for keyed lists (update, insert, remove; never clear and refill). `setValue` refuses to overwrite a focused field. `revealApp` flips `body.app-ready` after first content and tells the Tauri shell `app_ready`. `el`, `mountOnce` and `setHtml` do assign innerHTML, but only on fresh detached nodes or an empty host.",
+  "kind": "module",
+  "layer": "frontend",
+  "tags": [
+    "dom",
+    "zero-flash",
+    "patch",
+    "helpers"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/dom.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "Disposer",
+        "signature": "export type Disposer = () => void",
+        "doc": "A function that cancels or dismisses what a helper started."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "delayedIndicator",
+        "signature": "export function delayedIndicator(show: () => void, hide: () => void, delay = 300, minVisible = 250): Disposer",
+        "doc": "Show an indicator only if the wait outlasts `delay`; once visible keep it for at least `minVisible` so it cannot blink. Returns the dismiss function. The app's own numbers: 300 / 250."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "pendingClass",
+        "signature": "export function pendingClass(el: HTMLElement, delay = 300, minVisible = 250): Disposer",
+        "doc": "Convenience over delayedIndicator for an element that carries .ns-pending: toggles .is-shown so the element keeps its reserved box while hidden."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "PatchListOptions",
+        "signature": "export interface PatchListOptions<T> { key: (item: T) => string; create: (item: T) => HTMLElement; update: (node: HTMLElement, item: T) => void; }",
+        "doc": "The three callbacks patchList needs: a stable key, a node factory and an in-place updater."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "patchList",
+        "signature": "export function patchList<T>(container: HTMLElement, items: T[], opts: PatchListOptions<T>): void",
+        "doc": "Reconcile `container`'s children against `items` by key. Existing nodes are updated in place (scroll, focus, selection, in-progress input survive); missing nodes are created; extra nodes are removed;"
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "swapMedia",
+        "signature": "export function swapMedia(img: HTMLImageElement, nextSrc: string): Promise<void>",
+        "doc": "Replace an image's source without a blank frame: decode off-screen, then swap src in one write. The old picture stays visible until the new one can paint. Resolves when the swap happened, rejects on load failure."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setText",
+        "signature": "export function setText(el: Element | null, text: string): void",
+        "doc": "Write text only when it differs. Numeric readouts should also carry .ns-tabular and a reserved width so neighbours never shift."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setClass",
+        "signature": "export function setClass(el: Element | null, cls: string, on: boolean): void",
+        "doc": "Toggle a class only when the state differs (no attribute churn)."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "reserve",
+        "signature": "export function reserve(el: HTMLElement, box: { width?: number; height?: number; minHeight?: number; aspect?: string }): void",
+        "doc": "Reserve a box before content lands. Pass width/height in px or an aspect ratio string like '16 / 9'."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "revealApp",
+        "signature": "export function revealApp(): void",
+        "doc": "The app's boot reveal: #app is visibility:hidden from the critical inline style; call this exactly once after the first render is in the DOM. Two frames so fonts and layout settle before the single reveal."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "mountOnce",
+        "signature": "export function mountOnce(host: HTMLElement, html: string): void",
+        "doc": "Mount a fresh subtree from a template string ONCE into an empty host. Refuses to overwrite a host that already has rendered children, which is the exact mistake the zero-flash law forbids; patch it instead."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "el",
+        "signature": "export function el<T extends HTMLElement = HTMLElement>(html: string): T",
+        "doc": "Parses a template string into one detached element; the way to build a node once."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "q",
+        "signature": "export function q<T extends Element = HTMLElement>(root: ParentNode, sel: string): T",
+        "doc": "querySelector that throws when the element is missing, so a wrong selector fails loudly."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setHidden",
+        "signature": "export function setHidden(node: HTMLElement, hidden: boolean): void",
+        "doc": "Sets node.hidden only when it differs."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setDisabled",
+        "signature": "export function setDisabled(node: HTMLButtonElement | HTMLInputElement | HTMLSelectElement, disabled: boolean): void",
+        "doc": "Sets disabled on a button, input or select only when it differs."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setTitle",
+        "signature": "export function setTitle(node: HTMLElement, title: string): void",
+        "doc": "Sets the tooltip title only when it differs."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setStyleVar",
+        "signature": "export function setStyleVar(node: HTMLElement, name: string, value: string): void",
+        "doc": "Sets one inline custom property only when its value differs."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setValue",
+        "signature": "export function setValue(node: HTMLInputElement | HTMLSelectElement, value: string): void",
+        "doc": "Sets a field value only when it differs and the field is not focused."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setChecked",
+        "signature": "export function setChecked(node: HTMLInputElement, on: boolean): void",
+        "doc": "Sets a checkbox state only when it differs."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "setHtml",
+        "signature": "export function setHtml(node: Element, html: string, key: string): void",
+        "doc": "Replaces a node content from a template string, but only when the key differs from the last one rendered."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "escapeHtml",
+        "signature": "export function escapeHtml(s: string): string",
+        "doc": "Escapes & < > \" and apostrophe for use in template strings."
+      },
+      {
+        "file": "frontend/src/ui/dom.ts",
+        "symbol": "isMac",
+        "signature": "export const isMac",
+        "doc": "True on macOS and iOS platforms."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/dom.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [],
+    "npm": [
+      {
+        "name": "@tauri-apps/api",
+        "range": "2.11.1"
+      }
+    ],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": [
+      "app_ready"
+    ]
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "guarded-writes",
+      "text": "Every set* helper compares before writing; call sites must use them instead of assigning textContent, hidden, value or class directly on a live node.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [
+    {
+      "spdx": "MIT",
+      "name": "NodeMode stylized design system: tokens, theme profiles, theme boot, dom-stable helpers, icon subset",
+      "url": "",
+      "files": [
+        "frontend/src/ui/dom.ts"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "title": "Keyed list patch",
+      "language": "ts",
+      "snippet": "patchList(this.rows, entries, {\n  key: (e) => e.layer.id,\n  create: (e) => this.createRow(e),\n  update: (n, e) => this.updateRow(n, e),\n});",
+      "whenToUse": "When a list of rows changes: pass a stable key and update in place."
+    },
+    {
+      "title": "Build once, patch text",
+      "language": "ts",
+      "snippet": "export function checkRow(label: string, onChange: (v: boolean) => void): Row<boolean> {\n  const root = el('<label class=\"cv-field cv-check\"><span></span><input type=\"checkbox\"></label>');\n  setText(q(root, 'span'), label);\n  const box = q(root, 'input') as HTMLInputElement;\n  box.addEventListener('change', () => onChange(box.checked));\n  return { el: root, set(v) { setChecked(box, v); } };\n}",
+      "whenToUse": "Pattern for a row: el() once, setText the label, return a setter that patches."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 7
+  }
+}

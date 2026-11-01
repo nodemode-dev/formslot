@@ -1,0 +1,228 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "svc.agent-bridge",
+  "title": "Agent bridge and window control",
+  "summary": "Window side of the agent protocol: AgentBridge long-polls the engine and runs MCP tools; UiControl lets an agent drive any form app (ui.inspect, ui.state, ui.screenshot, ui.menu.*); runScript is a no-network script sandbox.",
+  "description": "The engine queues window tools; `AgentBridge` (in `agent-bridge.ts`) loops on `/api/mcp/bridge/next`, executes with the engine and posts results; hand edits are reported back (debounced 400 ms) through `/api/mcp/bridge/changed` so subscribed sessions are told. `UiControl` drives the app through the same elements and commands a person uses, including menus (`menuList`, `menuInvoke`, resolved from `MenuDef[]` of `ui.menu-glass`) and synthetic pointer/key input. `runScript` runs a script as an async function body in a worker whose fetch, WebSocket, storage and DOM names are removed; its only doors are `run(id, params)`, `commands()` and `log()`. `agent-bridge.ts` is 1.4k lines and imports most of formvis (engine, io, tools); the protocol and the ui-control/script-sandbox files are the reusable parts.",
+  "kind": "service",
+  "layer": "frontend",
+  "tags": [
+    "agent",
+    "bridge",
+    "ui-control",
+    "automation",
+    "sandbox",
+    "mcp"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/automation/agent-bridge.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/automation/agent-bridge.ts",
+        "symbol": "McpResult",
+        "signature": "export interface McpResult { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>; structuredContent?: Record<string, unknown>; isError?: boolean }",
+        "doc": "Outside agents in the window (1.52.1): while Allow outside agents is on (Preferences > Plugins), the window collects MCP tool calls from the engine and runs them here, each change an ordinary undoable step."
+      },
+      {
+        "file": "frontend/src/automation/agent-bridge.ts",
+        "symbol": "AgentDeps",
+        "signature": "export interface AgentDeps { ... }",
+        "doc": "What the app hands the bridge: consent hooks ask, note and allow, plus optional app abilities (openFile, projectBlob, applyFilter, selectSubject, removeBackground, renderVideo, viewCapture, selectPoints, plugins and more)."
+      },
+      {
+        "file": "frontend/src/automation/agent-bridge.ts",
+        "symbol": "AgentBridge",
+        "signature": "export class AgentBridge",
+        "doc": "The window side of the MCP bridge: loops on the engine bridge, runs each queued tool against the engine and posts results; hand edits are reported back (debounced 400 ms)."
+      },
+      {
+        "file": "frontend/src/automation/agent-bridge.ts",
+        "symbol": "AgentBridge.setEnabled",
+        "signature": "setEnabled(on: boolean): void",
+        "doc": "Turns the bridge loop on or off; turning it off stops waiting calls at once."
+      },
+      {
+        "file": "frontend/src/automation/agent-bridge.ts",
+        "symbol": "AgentBridge.run",
+        "signature": "async run(name: string, a: Record<string, unknown>): Promise<McpResult>",
+        "doc": "One tool call; its MCP result."
+      },
+      {
+        "file": "frontend/src/automation/ui-control.ts",
+        "symbol": "UiEnv",
+        "signature": "export interface UiEnv { engine: Engine; commands: Commands; menus(): MenuDef[]; capture(): HTMLCanvasElement | null; docPoint(clientX: number, clientY: number): { x: number; y: number } | null; }",
+        "doc": "The window's own controls for outside agents: its state, a picture of a part of it, the menus by path, named settings, open dialogs, synthetic pointer and key input, and the window itself."
+      },
+      {
+        "file": "frontend/src/automation/ui-control.ts",
+        "symbol": "UiControl",
+        "signature": "export class UiControl",
+        "doc": "Window control by elements and commands a person uses: inspect, state, screenshots, menus, settings, dialogs, synthetic pointer and key input."
+      },
+      {
+        "file": "frontend/src/automation/ui-control.ts",
+        "symbol": "UiControl.state",
+        "signature": "async state(): Promise<McpResult>",
+        "doc": "Snapshot as an McpResult: tool, document, view, colours, window size, theme, open dialogs, menu open, busy and fps."
+      },
+      {
+        "file": "frontend/src/automation/ui-control.ts",
+        "symbol": "UiControl.screenshot",
+        "signature": "async screenshot(selector: string, maxSize: number, jpeg: boolean, quality: number): Promise<McpResult>",
+        "doc": "A picture of the stage canvas, or of the part of the window a selector names, drawn from a copy of its elements."
+      },
+      {
+        "file": "frontend/src/automation/ui-control.ts",
+        "symbol": "UiControl.menuPaths",
+        "signature": "menuPaths(): Map<string, string>",
+        "doc": "Each command id in the menu bar with its path (\"Filter > Blur > Gaussian Blur\"); the first place a command appears."
+      },
+      {
+        "file": "frontend/src/automation/ui-control.ts",
+        "symbol": "UiControl.menuList",
+        "signature": "menuList(path: string, depth: number): McpResult",
+        "doc": "Lists the menu tree at a path to a depth."
+      },
+      {
+        "file": "frontend/src/automation/ui-control.ts",
+        "symbol": "UiControl.menuId",
+        "signature": "menuId(path: string): { id?: string; error?: string }",
+        "doc": "The command id a menu path names, or why not."
+      },
+      {
+        "file": "frontend/src/automation/ui-control.ts",
+        "symbol": "UiControl.menuInvoke",
+        "signature": "async menuInvoke(path: string, params: Record<string, unknown> | undefined): Promise<McpResult>",
+        "doc": "Runs the command a menu path names, with params."
+      },
+      {
+        "file": "frontend/src/automation/script-sandbox.ts",
+        "symbol": "ScriptRun",
+        "signature": "export interface ScriptRun { ok: boolean; result?: unknown; log: string[]; error?: string }",
+        "doc": "Outcome of a script: ok, result, log lines and error."
+      },
+      {
+        "file": "frontend/src/automation/script-sandbox.ts",
+        "symbol": "ScriptDeps",
+        "signature": "export interface ScriptDeps { run(id: string, params: Record<string, unknown>): Promise<unknown>; list(): Array<{ id: string; label: string }>; timeoutMs?: number; }",
+        "doc": "What the host supplies: run(id, params) for one catalogue command, list() of ids and labels, and an optional timeoutMs."
+      },
+      {
+        "file": "frontend/src/automation/script-sandbox.ts",
+        "symbol": "runScript",
+        "signature": "export function runScript(source: string, deps: ScriptDeps): Promise<ScriptRun>",
+        "doc": "Runs script source as an async function body in a dedicated worker with no network, storage or DOM."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/automation/agent-bridge.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "tool handlers",
+        "engine imports"
+      ]
+    },
+    {
+      "path": "frontend/src/automation/ui-control.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "selectors for formvis markup"
+      ]
+    },
+    {
+      "path": "frontend/src/automation/script-sandbox.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "svc.mcp-server",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "svc.command-catalogue",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.menu-glass",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "sandbox-no-network",
+      "text": "Scripts run in a worker with fetch, XMLHttpRequest, WebSocket, storage, navigator and location removed; the only doors out are run, commands and log.",
+      "severity": "must"
+    },
+    {
+      "id": "disabled-refuses-at-once",
+      "text": "Turning the bridge off tells the engine to stop waiting calls immediately.",
+      "severity": "must"
+    },
+    {
+      "id": "agent-edits-announced",
+      "text": "A call from an agent is announced by the engine; hand edits are reported separately and debounced.",
+      "severity": "should"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Script body the sandbox accepts",
+      "language": "ts",
+      "snippet": "const value = await fn((id, p) => ask('run', String(id), p === undefined ? {} : p), (...a) => post({ type: 'log', text: a.map((x) => { try { return typeof x === 'string' ? x : JSON.stringify(x); } catch (err) { return String(x); } }).join(' ') }), () => ask('list'));\nlet sent = value;",
+      "whenToUse": "Understand the three bindings (run, log, commands) a script gets."
+    },
+    {
+      "title": "Bridge constructed with deps",
+      "language": "ts",
+      "snippet": "export class AgentBridge {\n  private on = false;\n  private looping = false;\n  private inflight = 0;\n  private callId = '';\n  private changed = new Set<string>();\n  private changedTimer = 0;\n  constructor(private readonly engine: Engine, private readonly deps: AgentDeps) {\n    const kinds: Record<string, string> = { selection: 'selection', history: 'history', doc: 'layers', active: 'document', projects: 'document' };",
+      "whenToUse": "Create the bridge once with the engine and its consent dialogs."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 26
+  }
+}

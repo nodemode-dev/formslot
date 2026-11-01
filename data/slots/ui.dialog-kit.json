@@ -1,0 +1,264 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.dialog-kit",
+  "title": "Dialog kit",
+  "summary": "Modal Dialog class (scrim, titled frame, body, button row, focus return, drag, Escape) with remember() for sticky control values, plus confirmAction, promptName, askSaveChanges and DialogHistory field undo. The canonical shell to compose instead of rebuilding dialogs.",
+  "description": "Compose: `new Dialog(title, width)`, add fields with `field(label, control)` or fill `body`, add buttons with `button(label, kind, run)`, then `open(focus)`. `remember(skip, extra)` persists every slider, number, checkbox, colour and select value under the dialog title through `ui.prefs-store` and puts it back on open. `anyDialogOpen()` lets global shortcuts and menus stand down. `confirmAction` returns a Promise<boolean>; `danger` styles the OK button. Dialogs mount in `#overlay-root`. B06 counts about 40 formvis dialogs that assemble their own body on top of this class; new code should compose it as above.",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "dialog",
+    "modal",
+    "confirm",
+    "remember",
+    "focus"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/dialogs.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "RememberedExtra",
+        "signature": "export interface RememberedExtra { read(): Record<string, DialogValue>; write(values: Record<string, DialogValue>): void; onChange(notify: () => void): void }",
+        "doc": "A value a remembered dialog holds outside its form controls."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "anyDialogOpen",
+        "signature": "export const anyDialogOpen = (): boolean => ...",
+        "doc": "True while at least one dialog is showing; global shortcuts consult this."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "Dialog",
+        "signature": "export class Dialog",
+        "doc": "Modal dialog shell: a backdrop, a titled frame, a content area and a row of buttons."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "askSaveChanges",
+        "signature": "export function askSaveChanges(name: string): Promise<'save' | 'discard' | 'cancel'>",
+        "doc": "Asks whether to save a document's changes before it closes: 'save', 'discard' or 'cancel'."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "askSaveChangesAll",
+        "signature": "export function askSaveChangesAll(name: string, many = true): Promise<{ choice: 'save' | 'discard' | 'cancel'; all: boolean }>",
+        "doc": "The same with Apply to All (Close All and Close Others, 1.65.8): `all` when it was ticked, so the answer stands for the documents after this one."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "confirmAction",
+        "signature": "export function confirmAction(title: string, text: string, okLabel = 'OK', danger = false, cancelLabel = 'Cancel'): Promise<boolean>",
+        "doc": "Opens a shared confirm dialog and resolves true on OK; danger styles the OK button as destructive."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "promptName",
+        "signature": "export function promptName(title: string, value: string, okLabel = 'OK'): Promise<string | null>",
+        "doc": "Opens a shared single-line prompt and resolves the entered name, or null when cancelled."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "Dialog.setTitle",
+        "signature": "setTitle(title: string): void",
+        "doc": "Changes the visible title; the stored English title (the remember key) is updated with it."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "Dialog.remember",
+        "signature": "remember(skip: readonly Element[] = [], extra: RememberedExtra | null = null): void",
+        "doc": "The dialog's settings stick. Call once the controls are built: every slider, number, check box, colour and select in the body (not text fields, which hold names and prompts) is put back to its last value when the app has been built and..."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "Dialog.open",
+        "signature": "open(focus?: HTMLElement | null): void",
+        "doc": "Shows the dialog and moves focus into it: to `focus` if given, else to the first field or primary button."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "Dialog.close",
+        "signature": "close(): void",
+        "doc": "Hides the dialog, tells the owner, and hands focus back to where it came from."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "Dialog.button",
+        "signature": "button(label: string, kind: '' | 'primary' | 'ghost' | 'danger', run: () => void): HTMLButtonElement",
+        "doc": "Adds a button to the footer row."
+      },
+      {
+        "file": "frontend/src/ui/dialogs.ts",
+        "symbol": "Dialog.field",
+        "signature": "field(label: string, control: HTMLElement): HTMLElement",
+        "doc": "Adds a labelled control to the body."
+      },
+      {
+        "file": "frontend/src/ui/dialog-history.ts",
+        "symbol": "REMEMBERED",
+        "signature": "export const REMEMBERED",
+        "doc": "Selector for the controls a dialog remembers and undoes: range, number, checkbox, colour and select inputs."
+      },
+      {
+        "file": "frontend/src/ui/dialog-history.ts",
+        "symbol": "DialogHistory",
+        "signature": "export class DialogHistory",
+        "doc": "Per-dialog field undo and redo: start() snapshots the controls, undo() steps back on Mod+Z, tab() and alt() handle focus order and Alt state."
+      },
+      {
+        "file": "frontend/src/ui/dialog-history.ts",
+        "symbol": "DialogHistory.start",
+        "signature": "start(): void",
+        "doc": "The dialog opened: history clears, and once its owner has filled it the values are kept for Reset."
+      },
+      {
+        "file": "frontend/src/ui/dialog-history.ts",
+        "symbol": "DialogHistory.undo",
+        "signature": "undo(e: KeyboardEvent): void",
+        "doc": "Mod+Z and Shift+Mod+Z step the fields back and forward, unless the focused field holds typing of its own still to undo."
+      },
+      {
+        "file": "frontend/src/ui/dialog-history.ts",
+        "symbol": "DialogHistory.tab",
+        "signature": "tab(e: KeyboardEvent): void",
+        "doc": "Tab and Shift+Tab move between the text and number fields and select what they land on; past the first or last field focus leaves by the normal order, so the buttons and checkboxes stay reachable from the keyboard."
+      },
+      {
+        "file": "frontend/src/ui/dialog-history.ts",
+        "symbol": "DialogHistory.alt",
+        "signature": "alt(on: boolean): void",
+        "doc": "Cancel reads Reset while Alt is down."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [
+      "cv-scrim",
+      "cv-dialog",
+      "cv-dialog-head",
+      "cv-dialog-title",
+      "cv-dialog-body",
+      "cv-dialog-foot",
+      "cv-field",
+      "cv-btn",
+      "cv-icon-btn",
+      "cv-savechanges"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/dialogs.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "#overlay-root host id"
+      ]
+    },
+    {
+      "path": "frontend/src/ui/dialog-history.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.dom-helpers",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.icons",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.prefs-store",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "css.panels-dialogs",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "strings-through-t",
+      "text": "User-visible strings go through t() from the i18n module; the English text is the key.",
+      "severity": "should"
+    },
+    {
+      "id": "inline-icons",
+      "text": "Icons are inline currentColor SVG strings from the icons module (icon(name, size)); no icon library, and the three-star sparkle icon is banned under any name.",
+      "severity": "must"
+    },
+    {
+      "id": "z-scale",
+      "text": "Stacking above local ordering uses var(--z-*) from the one z scale; a raw numeric z-index is not allowed.",
+      "severity": "must"
+    },
+    {
+      "id": "focus-returns",
+      "text": "Closing a dialog hands focus back to the element that had it, and Escape closes it; global shortcuts are stopped while it is open.",
+      "severity": "must"
+    },
+    {
+      "id": "remember-keyed-by-english-title",
+      "text": "Remembered values are keyed by the English title and the control label, so a language change does not lose them.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "A small dialog with fields and buttons",
+      "language": "ts",
+      "snippet": "const dlg = new Dialog('Divide Slice', 360);\nconst num = (value: number): HTMLInputElement => { const i = document.createElement('input'); i.type = 'number'; i.step = '1'; i.min = '1'; i.max = '64'; i.value = String(value); i.className = 'cv-input'; return i; };\nconst across = num(2), down = num(1);\ndlg.field('Slices across', across);\ndlg.field('Slices down', down);\ndlg.button('Cancel', 'ghost', () => dlg.close());\ndlg.button('OK', 'primary', () => {\n  if (engine.divideSlice(slice.id, across.valueAsNumber || 1, down.valueAsNumber || 1)) dlg.close();\n});\ndlg.open(across);\nreturn true;",
+      "whenToUse": "Any small modal form: field rows, a ghost cancel and a primary OK."
+    },
+    {
+      "title": "Destructive confirm",
+      "language": "ts",
+      "snippet": "if (!(await confirmAction('Delete all chats', 'Delete every saved assistant chat? This cannot be undone.', 'Delete', true))) return;",
+      "whenToUse": "Ask before an action that cannot be undone; the true flag styles OK as danger."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 12
+  }
+}

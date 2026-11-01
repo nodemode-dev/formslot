@@ -1,0 +1,568 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "svc.claude-code-agents",
+  "title": "Claude Code launch and Agent Connect",
+  "summary": "Engine services that launch Claude Code (stream-JSON child and terminal tabs), track outside agent clients with per-client and per-tool allow/ask/deny policies, approvals, limits and an activity log, plus setup/agents.py that syncs and drift-checks the skills.",
+  "description": "Three layers. `services/claude_code.py` finds the claude CLI, starts a stream-JSON child (`start`, `send`, `stop`, `answer`) or builds a terminal launch (`open_terminal`, using `services/terminal.py` from `ui.terminal-dock`). `services/agents.py` is Agent Connect: sessions, identity, policy table (default ask; risky tools `save_project`, `export_image`, `timeline_render`, `convert_file` ask before overwriting), `approval` waits up to 120 s, limits, a 200-entry activity log and a subscriber queue for the window. `routers/agents.py` and `routers/claude_code.py` expose them (REST plus WebSockets, loopback only). `setup/agents.py` is the pattern formslot should extend: `agents sync` mirrors skills into .agents/skills and regenerates reference files, `--check` fails on drift. The commands reference it regenerates reads the catalogue from `svc.command-catalogue`.",
+  "kind": "service",
+  "layer": "engine",
+  "tags": [
+    "claude-code",
+    "agents",
+    "policy",
+    "approval",
+    "skills-sync",
+    "drift-check"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "backend/app/services/claude_code.py",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "child_env",
+        "signature": "def child_env() -> dict",
+        "doc": "Environment for the Claude Code child: CLAUDE* variables dropped except KEEP_ENV, CLAUDE_PROJECT_DIR set to the repo and the repo put first on PATH."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "cli",
+        "signature": "def cli() -> str | None",
+        "doc": "Path of the claude program: FORMVIS_CLAUDE_BIN, then PATH, then known install folders, then the login shell; None when not found."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "info",
+        "signature": "def info(fresh: bool = False) -> dict",
+        "doc": "Install status as a dict (installed, path, version, signedIn, install), cached for 60 seconds unless fresh."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "Agent",
+        "signature": "class Agent",
+        "doc": "State of the stream-JSON child: process, generation, mode, session, state, message log, subscribers and pending permission gates; AGENT is the one instance."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "answer",
+        "signature": "def answer(request_id: str, allow: bool) -> bool",
+        "doc": "Resolves a pending permission request by id with allow or deny; False when no such request."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "mcp_config",
+        "signature": "def mcp_config() -> str | None",
+        "doc": "Path of the repo .mcp.json, or None when absent."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "start",
+        "signature": "def start(mode: str = \"ask\", fresh: bool = False, port: int | None = None) -> dict",
+        "doc": "Starts Claude Code in stream-JSON mode for mode ask, auto-edits or plan; LookupError when it is not installed."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "send",
+        "signature": "def send(text: str) -> None",
+        "doc": "Publishes a user turn and writes it to the running child; LookupError when not running."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "stop",
+        "signature": "def stop(quiet: bool = False) -> dict",
+        "doc": "Stops the child and its readers; quiet suppresses the stopped message."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "program",
+        "signature": "def program() -> str | None",
+        "doc": "The claude program path when it exists and is executable, else None."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "inapp_mcp_config",
+        "signature": "def inapp_mcp_config(port: int) -> str",
+        "doc": "JSON text of an MCP config pointing at http://127.0.0.1:<port>/mcp with the per-run in-app token header."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "terminal_env",
+        "signature": "def terminal_env() -> dict",
+        "doc": "Environment for a Claude Code terminal tab: the terminal base env without CLAUDE* variables plus the in-app token."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "terminal_argv",
+        "signature": "def terminal_argv(path: str, port: int, prompt: str | None, resume: str | None) -> list[str]",
+        "doc": "Argv for a Claude Code terminal tab: program, in-app MCP config, allowed formvis tools, optional resume session and prompt, wrapped for a login shell off Windows."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "workdir",
+        "signature": "def workdir(document_folder: str | None = None) -> str",
+        "doc": "The document folder when it exists, else the data folder."
+      },
+      {
+        "file": "backend/app/services/claude_code.py",
+        "symbol": "open_terminal",
+        "signature": "def open_terminal(port: int, prompt: str | None = None, resume: str | None = None, cols: int = 100, rows: int = 30, fresh: bool = False, document_folder: str | None = None) -> dict",
+        "doc": "The person's own Claude Code in a terminal tab, connected to this formvis without the outside-agent question. A live tab is reused (a prompt is typed into it) unless fresh or resume asks for another;"
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "limits",
+        "signature": "def limits() -> dict",
+        "doc": "What agents may reach and how much a reply may carry: the folders they may read and write (none set: anywhere outside the system folders), the most characters of text and bytes of one picture a tool returns."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "set_limits",
+        "signature": "def set_limits(values: dict) -> dict",
+        "doc": "Validates (up to 32 absolute folders, text_chars and image_bytes within LIMIT_RANGES), stores and returns the limits."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "subscribe",
+        "signature": "def subscribe() -> asyncio.Queue",
+        "doc": "Adds and returns an asyncio queue that receives state and activity messages."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "enabled",
+        "signature": "def enabled() -> bool",
+        "doc": "Whether outside agents are switched on."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "policy_of",
+        "signature": "def policy_of(name: str) -> str",
+        "doc": "The stored policy for a client name: allow, ask or deny; ask when none is stored."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "tool_policies",
+        "signature": "def tool_policies(client: str) -> dict[str, str]",
+        "doc": "The per-tool policies kept for one client under the key `client:tool` (the in-app assistant keeps its table here)."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "state",
+        "signature": "def state() -> dict",
+        "doc": "UI snapshot: enabled flag, clients (name, version, policy, calls, last_seen, waiting), pending approvals, approval timeout and the policy choices."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "touch",
+        "signature": "def touch(name: str, version: str = \"\") -> None",
+        "doc": "Creates or updates a client record with version and last-seen time."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "open_session",
+        "signature": "def open_session(name: str, version: str) -> str",
+        "doc": "Registers an agent session for a client name and version and returns the session id."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "close_session",
+        "signature": "def close_session(sid: str) -> None",
+        "doc": "Forgets an agent session."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "identity",
+        "signature": "def identity(sid: str | None, info: dict | None, fallback: str) -> tuple[str, str]",
+        "doc": "The client's name and version: its session's (dropped after SESSION_IDLE seconds without a call), else the clientInfo sent with the request, else the fallback."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "is_inapp",
+        "signature": "def is_inapp(token: str | None) -> bool",
+        "doc": "True for the per-run token only the engine puts in the MCP configuration of the Claude Code it starts in the window's terminal dock."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "set_enabled",
+        "signature": "def set_enabled(on: bool) -> None",
+        "doc": "Switches outside agents on or off; off also cancels pending steps."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "set_policy",
+        "signature": "def set_policy(name: str, policy: str) -> None",
+        "doc": "Stores allow, ask or deny for a client; a pending step is decided at once when the policy is not ask."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "begin",
+        "signature": "def begin(client: str, tool: str, args: dict | None) -> dict",
+        "doc": "Logs the start of a tool call (client, tool, summary, target) and returns the activity entry."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "end",
+        "signature": "def end(entry: dict, status: str, message: str = \"\") -> None",
+        "doc": "Sets an activity entry status and message (cut to 300 characters)."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "activity",
+        "signature": "def activity(limit: int = 100) -> list[dict]",
+        "doc": "The newest activity entries first, up to limit."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "admit",
+        "signature": "def admit(client: str) -> str | None",
+        "doc": "A reason the call is refused outright, written as what the agent should do next; None when it may go on."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "approval",
+        "signature": "async def approval(entry: dict, why: str) -> str | None",
+        "doc": "Waits for the person to approve a step Undo cannot reverse; None when approved, else what to tell the agent."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "decide",
+        "signature": "def decide(pid: str, allow: bool) -> bool",
+        "doc": "Answers a pending approval by id with allow or deny; False when it is gone."
+      },
+      {
+        "file": "backend/app/services/agents.py",
+        "symbol": "stop",
+        "signature": "def stop(client: str | None) -> int",
+        "doc": "Cancels pending steps (one agent's, or all)."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "skill_names",
+        "signature": "def skill_names() -> list[str]",
+        "doc": "Names of the skill folders under .claude/skills."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "tools_reference",
+        "signature": "def tools_reference() -> str",
+        "doc": "Generates the MCP tools reference markdown from the live tool list."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "commands_reference",
+        "signature": "def commands_reference(rows: list[dict]) -> str",
+        "doc": "Generates the command reference markdown from the catalogue rows."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "command_map",
+        "signature": "def command_map(rows: list[dict]) -> str",
+        "doc": "Generates the command map markdown by group."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "tool_map",
+        "signature": "def tool_map() -> str",
+        "doc": "Generates the tool map markdown."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "generated",
+        "signature": "def generated() -> dict[Path, str]",
+        "doc": "The set of generated reference files and their text."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "skill_problems",
+        "signature": "def skill_problems() -> list[str]",
+        "doc": "Problems found in the skills (missing files, drift from the mirrors)."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "sync",
+        "signature": "def sync(check: bool) -> int",
+        "doc": "Mirrors skills into .agents/skills and regenerates references; with check=True it only reports drift and returns non-zero."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "install_claude",
+        "signature": "def install_claude(home: Path, dry: bool, said: list) -> None",
+        "doc": "Installs the skills for Claude Code in the home folder."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "install_codex",
+        "signature": "def install_codex(home: Path, dry: bool, said: list) -> None",
+        "doc": "Installs the skills for Codex."
+      },
+      {
+        "file": "setup/agents.py",
+        "symbol": "install_cursor",
+        "signature": "def install_cursor(home: Path, dry: bool, said: list) -> None",
+        "doc": "Installs the skills for Cursor."
+      }
+    ],
+    "commands": [],
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/api/agents/limits",
+        "handler": "read_limits",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agents/limits",
+        "handler": "write_limits",
+        "requestSchemaRef": "LimitsBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/agents",
+        "handler": "read",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/agents/tool-policies",
+        "handler": "tool_policies",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/agents/activity",
+        "handler": "feed",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agents/enabled",
+        "handler": "enable",
+        "requestSchemaRef": "EnabledBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agents/policy",
+        "handler": "policy",
+        "requestSchemaRef": "PolicyBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agents/approve",
+        "handler": "approve",
+        "requestSchemaRef": "ApproveBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agents/stop",
+        "handler": "stop",
+        "requestSchemaRef": "StopBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "WS",
+        "path": "/api/agents/stream",
+        "handler": "stream",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/agents.py"
+      },
+      {
+        "method": "GET",
+        "path": "/api/agent/claude/status",
+        "handler": "status",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/claude_code.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agent/claude/start",
+        "handler": "start",
+        "requestSchemaRef": "StartBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/claude_code.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agent/claude/send",
+        "handler": "send",
+        "requestSchemaRef": "SendBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/claude_code.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agent/claude/stop",
+        "handler": "stop",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/claude_code.py"
+      },
+      {
+        "method": "POST",
+        "path": "/api/agent/claude/permission",
+        "handler": "permission",
+        "requestSchemaRef": "AnswerBody",
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/claude_code.py"
+      },
+      {
+        "method": "WS",
+        "path": "/api/agent/claude/stream",
+        "handler": "stream",
+        "requestSchemaRef": null,
+        "responseSchemaRef": null,
+        "file": "backend/app/routers/claude_code.py"
+      }
+    ],
+    "cssClasses": [],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "backend/app/services/claude_code.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "product name formvis in env and paths"
+      ]
+    },
+    {
+      "path": "backend/app/services/agents.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "INAPP_CLIENT label",
+        "RISKY_TOOLS table"
+      ]
+    },
+    {
+      "path": "backend/app/routers/agents.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    },
+    {
+      "path": "backend/app/routers/claude_code.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    },
+    {
+      "path": "setup/agents.py",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "skill folder names",
+        "generated reference paths"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.terminal-dock",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [
+      {
+        "name": "fastapi",
+        "range": "0.141.1"
+      },
+      {
+        "name": "pydantic",
+        "range": "*"
+      }
+    ],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "loopback-only",
+      "text": "The engine is reached on loopback only, behind the app-wide LocalGuard middleware (app/core/local_guard.py, not in this corpus); routes that act (start processes, write settings or secrets, WebSockets) also check the request origin with require_local or origin_ok.",
+      "severity": "must"
+    },
+    {
+      "id": "risky-tools-ask",
+      "text": "Tools in RISKY_TOOLS (those that overwrite a file) require approval unless the client policy is allow; the default policy is ask.",
+      "severity": "must"
+    },
+    {
+      "id": "skills-drift-gate",
+      "text": "agents sync --check fails while the mirrored skills or generated references differ from their source; run agents sync after the tool or command catalogue changes.",
+      "severity": "must"
+    },
+    {
+      "id": "ws-origin-checked",
+      "text": "Mutating routes and WebSockets check the request origin (require_local, origin_ok) before doing work.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Start Claude Code and answer a permission",
+      "language": "py",
+      "snippet": "@router.post(\"/start\")\ndef start(body: StartBody, request: Request) -> dict:\n    require_local(request)\n    try:\n        return claude_code.start(body.mode, body.fresh, server_port(request))\n    except ValueError as exc:\n        raise HTTPException(status_code=422, detail=str(exc))\n    except LookupError as exc:\n        raise HTTPException(status_code=409, detail=str(exc))\n    except RuntimeError as exc:\n        raise HTTPException(status_code=500, detail=str(exc))",
+      "whenToUse": "The route the chat pane calls to start a session."
+    },
+    {
+      "title": "Per-client policy lookup",
+      "language": "py",
+      "snippet": "def policy_of(name: str) -> str:\n    _load()\n    return _policies.get(name, \"ask\")",
+      "whenToUse": "Read the allow, ask or deny policy for a client before running a tool."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 23
+  }
+}

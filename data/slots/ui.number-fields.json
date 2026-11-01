@@ -1,0 +1,144 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.number-fields",
+  "title": "Number fields and sticky modifiers",
+  "summary": "installNumberFields() turns every number input into a calculator-aware scrubbable field (100+20, 50%*2, drag label, pop-up slider) via delegated listeners; evalExpr is the parser. stickyModifiers and ModifierKeysPanel latch shift/alt/mod for pen and touch.",
+  "description": "One set of delegated document listeners; no field is rebuilt. While focused a field is a text box so operators are accepted; on leaving it is a number box again and the host handlers see one ordinary value. `evalExpr(text, pct)` evaluates + - * / ( ) with unary signs and a trailing percent. `stickyModifiers` holds shift/alt/mod as off, next or latched (double tap within 350 ms latches); the stage ORs them into pointer flags. `ModifierKeysPanel` is the on-screen panel for it.",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "number-input",
+    "scrub",
+    "expression",
+    "modifiers",
+    "touch"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/number-fields.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/number-fields.ts",
+        "symbol": "evalExpr",
+        "signature": "export function evalExpr(text: string, pct = 100): number | null",
+        "doc": "Evaluates + - / ( ) with unary signs and a trailing % (a percentage of `pct`). Null when the text is not arithmetic."
+      },
+      {
+        "file": "frontend/src/ui/number-fields.ts",
+        "symbol": "installNumberFields",
+        "signature": "export function installNumberFields(): void",
+        "doc": "Installs the delegated listeners once; every present and future number field gains arithmetic, scrub and pop-up slider."
+      },
+      {
+        "file": "frontend/src/ui/modifier-keys.ts",
+        "symbol": "StickyKey",
+        "signature": "export type StickyKey = 'shift' | 'alt' | 'mod'",
+        "doc": "One of the three sticky modifiers: shift, alt or mod."
+      },
+      {
+        "file": "frontend/src/ui/modifier-keys.ts",
+        "symbol": "stickyModifiers",
+        "signature": "export const stickyModifiers",
+        "doc": "The sticky modifiers (DEV_PLAN 35.3 part c): what the Modifier Keys panel holds for pen and touch users. The stage ORs these into each pointer's shift, alt and mod flags."
+      },
+      {
+        "file": "frontend/src/ui/modifier-keys.ts",
+        "symbol": "ModifierKeysPanel",
+        "signature": "export class ModifierKeysPanel",
+        "doc": "The Modifier Keys panel (Window > Modifier Keys): Shift, Alt (Option) and Ctrl (Cmd) buttons. One tap holds the modifier for the next canvas gesture; a double tap holds it until tapped again. Built once;"
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [
+      "cv-num",
+      "cv-numpop"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/number-fields.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "verbatim",
+      "renameables": []
+    },
+    {
+      "path": "frontend/src/ui/modifier-keys.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "panel markup classes"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.dom-helpers",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "css.panels-dialogs",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": []
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "install-once",
+      "text": "installNumberFields is called once at boot; it works through delegation, so fields built later need no call.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "Install once at boot",
+      "language": "ts",
+      "snippet": "\n// Number fields everywhere (ui/number-fields.ts): typed arithmetic, Shift with the arrows steps ten times as far, Return or Escape leaves the field, labels scrub, a pop-up slider.\ninstallNumberFields();",
+      "whenToUse": "In the boot sequence after panels exist."
+    },
+    {
+      "title": "Modifier panel mount",
+      "language": "ts",
+      "snippet": "new ModifierKeysPanel(q(root, '.cv-layers'));   // Window > Modifier Keys (DEV_PLAN 35.3 part c)",
+      "whenToUse": "To add the sticky modifier panel to a dock column."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 14
+  }
+}

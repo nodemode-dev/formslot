@@ -1,0 +1,316 @@
+{
+  "$schema": "../../docs/slot.schema.json",
+  "schemaVersion": 1,
+  "id": "ui.panel-group-dock",
+  "title": "Panel groups, dock and tab strip",
+  "summary": "PanelGroup (tabbed panel with chip tabs, minimise, drag a tab between groups), Dock (two columns of panels: reorder by header drag, hide, float in a window, dock back, remembered arrangement) and Tabs (document tab strip with pin, progress line and window title).",
+  "description": "Create a group with `new PanelGroup(host, id, tabs, label)`; the header carries `cv-panel-head` so the Dock moves it. `Dock` takes the two column hosts and keeps `{order, hidden, side}` plus heights and floats in localStorage (`formvis.dock*`; `Dock.remember` can turn writes off). Panels are registered with `registerPanel`. `Tabs` is the document strip and is bound to the formvis engine (`tabName`, `Engine`, `Project`), so a port adapts it; it sets the window title through the Tauri `set_window_title` command. Group state lives under `formvis.groups`. Central to the formcut and formwav panel layouts.",
+  "kind": "component",
+  "layer": "frontend",
+  "tags": [
+    "panels",
+    "dock",
+    "tabs",
+    "float",
+    "drag"
+  ],
+  "status": "proposed",
+  "statusReason": "seeded from B06 for the owner to confirm",
+  "version": "0.1.0",
+  "origin": {
+    "repo": "formvis",
+    "path": "frontend/src/ui/dock.ts",
+    "commit": "8fe4ce45bcfa1b85c509db4bb34da29942db964a",
+    "app": "formvis",
+    "appVersion": "1.98.4"
+  },
+  "api": {
+    "exports": [
+      {
+        "file": "frontend/src/ui/panel-group.ts",
+        "symbol": "GroupTab",
+        "signature": "export interface GroupTab { id: string; label: string; body: HTMLElement }",
+        "doc": "One tab of a group: id, label and the body element it shows."
+      },
+      {
+        "file": "frontend/src/ui/panel-group.ts",
+        "symbol": "PanelGroup",
+        "signature": "export class PanelGroup",
+        "doc": "A tabbed panel group with chip tabs, minimise and tab drag between groups; constructed with host, id, tabs and label."
+      },
+      {
+        "file": "frontend/src/ui/panel-group.ts",
+        "symbol": "PanelGroup.setMenu",
+        "signature": "setMenu(items: () => string[]): void",
+        "doc": "Shows the more-menu button and supplies its command ids."
+      },
+      {
+        "file": "frontend/src/ui/panel-group.ts",
+        "symbol": "PanelGroup.addTab",
+        "signature": "addTab(tid: string, label: string, page: HTMLElement, before?: string): void",
+        "doc": "Adds a tab (its page as it is), before the tab named, or last (the Layers group's Channels and Paths)."
+      },
+      {
+        "file": "frontend/src/ui/panel-group.ts",
+        "symbol": "PanelGroup.moveTab",
+        "signature": "static moveTab(tid: string, from: PanelGroup, to: PanelGroup): void",
+        "doc": "Moves a tab (its page, kept as it is) from one group to another; an emptied group is hidden."
+      },
+      {
+        "file": "frontend/src/ui/panel-group.ts",
+        "symbol": "PanelGroup.show",
+        "signature": "show(id: string, remember = true): void",
+        "doc": "Shows tab id; remember stores it for this device."
+      },
+      {
+        "file": "frontend/src/ui/panel-group.ts",
+        "symbol": "PanelGroup.setMinimised",
+        "signature": "setMinimised(min: boolean, remember = true): void",
+        "doc": "Minimises the group to its header, or restores it."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "DockPanel",
+        "signature": "export interface DockPanel { id: string; label: string; selector: string }",
+        "doc": "A dockable panel: id, label and the CSS selector of its section."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "DOCK_PANELS",
+        "signature": "export const DOCK_PANELS: readonly DockPanel[]",
+        "doc": "The formvis dock column panel table (id, label, selector); replace with the new app panels."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "SIDE_PANELS",
+        "signature": "export const SIDE_PANELS: readonly DockPanel[]",
+        "doc": "The side column's panel groups (Phase 21), movable like the dock's: any panel may live in either column."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "ALL_PANELS",
+        "signature": "export const ALL_PANELS: DockPanel[]",
+        "doc": "DOCK_PANELS, SIDE_PANELS and any registered panel; the set of ids a saved arrangement may name."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "registerPanel",
+        "signature": "export function registerPanel(p: DockPanel): void",
+        "doc": "Groups made by detaching a tab (1.49.2) join the panels the dock arranges, and leave once empty."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "unregisterPanel",
+        "signature": "export function unregisterPanel(id: string): void",
+        "doc": "Removes a registered panel unless it is a built-in one."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock",
+        "signature": "export class Dock",
+        "doc": "Manages the two panel columns: order, hidden panels, floating windows, heights, remembered on this device."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock.isShown",
+        "signature": "isShown(id: string): boolean",
+        "doc": "True when the panel id is not hidden."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock.refresh",
+        "signature": "refresh(): void",
+        "doc": "Re-lays out the columns (tabs moved between groups)."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock.toggle",
+        "signature": "toggle(id: string): void",
+        "doc": "Shows or hides panel id and saves the arrangement."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock.reset",
+        "signature": "reset(): void",
+        "doc": "Window > Reset Panels: the default order, every panel shown."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock.float",
+        "signature": "float(id: string, at: { x?: number; y?: number; w?: number; h?: number } = {}): boolean",
+        "doc": "The panel in a window of its own, at a place and size or where it last stood (a new one steps down the screen)."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock.dockBack",
+        "signature": "dockBack(id: string): boolean",
+        "doc": "A floating panel back in its column."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock.activate",
+        "signature": "activate(id: string): boolean",
+        "doc": "Shows the panel if hidden, opens the collapsed column for a docked one, and raises a floating one."
+      },
+      {
+        "file": "frontend/src/ui/dock.ts",
+        "symbol": "Dock.arrange",
+        "signature": "arrange(order: readonly string[], hidden: readonly string[], floats: unknown = {}): void",
+        "doc": "A workspace's arrangement (Phase 21): the panels in this order, these hidden; ids not in the dock are ignored."
+      },
+      {
+        "file": "frontend/src/ui/tabs.ts",
+        "symbol": "Tabs",
+        "signature": "export class Tabs",
+        "doc": "The document tab strip over the engine projects: progress line, pins, close handling, window title through set_window_title."
+      },
+      {
+        "file": "frontend/src/ui/tabs.ts",
+        "symbol": "Tabs.isPinned",
+        "signature": "isPinned(id: string): boolean",
+        "doc": "True when the document id is pinned."
+      },
+      {
+        "file": "frontend/src/ui/tabs.ts",
+        "symbol": "Tabs.togglePin",
+        "signature": "togglePin(id: string): void",
+        "doc": "Pins or unpins a document tab; pinned tabs sit first and survive Close All."
+      }
+    ],
+    "commands": [],
+    "routes": [],
+    "cssClasses": [
+      "cv-group",
+      "cv-group-head",
+      "cv-group-tabs",
+      "cv-group-tab",
+      "cv-group-body",
+      "cv-group-page",
+      "cv-group-min",
+      "cv-dock-marker",
+      "cv-dock-split",
+      "cv-float-panel",
+      "cv-float-bar",
+      "cv-tab",
+      "cv-tab-name",
+      "cv-tab-pin",
+      "cv-tab-close"
+    ],
+    "cssVars": []
+  },
+  "files": [
+    {
+      "path": "frontend/src/ui/panel-group.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "rename-strings-only",
+      "renameables": [
+        "storage key formvis.groups"
+      ]
+    },
+    {
+      "path": "frontend/src/ui/dock.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "DOCK_PANELS and SIDE_PANELS tables",
+        "storage keys"
+      ]
+    },
+    {
+      "path": "frontend/src/ui/tabs.ts",
+      "role": "source",
+      "sha256": "",
+      "lines": 0,
+      "port": "adapt",
+      "renameables": [
+        "Engine and Project types"
+      ]
+    }
+  ],
+  "contentHash": "",
+  "dependsOn": {
+    "slots": [
+      {
+        "id": "ui.dom-helpers",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "ui.icons",
+        "range": "^0.1.0"
+      },
+      {
+        "id": "css.panels-dialogs",
+        "range": "^0.1.0"
+      }
+    ],
+    "npm": [
+      {
+        "name": "@tauri-apps/api",
+        "range": "2.11.1"
+      }
+    ],
+    "python": [],
+    "cargo": [],
+    "tokens": [],
+    "tauriCommands": [
+      "set_window_title"
+    ]
+  },
+  "invariants": [
+    {
+      "id": "zero-dom-flash",
+      "text": "Build a node once, then patch text, classes, hidden flags and lists in place. Never assign innerHTML or clear textContent on a live container to rebuild it, and reserve space so nothing shifts when content arrives.",
+      "severity": "must"
+    },
+    {
+      "id": "strings-through-t",
+      "text": "User-visible strings go through t() from the i18n module; the English text is the key.",
+      "severity": "should"
+    },
+    {
+      "id": "inline-icons",
+      "text": "Icons are inline currentColor SVG strings from the icons module (icon(name, size)); no icon library, and the three-star sparkle icon is banned under any name.",
+      "severity": "must"
+    },
+    {
+      "id": "z-scale",
+      "text": "Stacking above local ordering uses var(--z-*) from the one z scale; a raw numeric z-index is not allowed.",
+      "severity": "must"
+    },
+    {
+      "id": "header-is-drag-handle",
+      "text": "A movable panel header carries cv-panel-head so Dock can move it; do not give panels another drag handle.",
+      "severity": "must"
+    }
+  ],
+  "ownerRules": {
+    "owner": "nodemode-ai",
+    "reviewers": [],
+    "changePolicy": "owner-only",
+    "declined": []
+  },
+  "license": "Apache-2.0",
+  "thirdParty": [],
+  "examples": [
+    {
+      "title": "A one-tab panel group",
+      "language": "ts",
+      "snippet": "new PanelGroup(this.root, 'properties', [{ id: 'properties', label: 'Properties', body }], 'Properties');",
+      "whenToUse": "Wrap a panel body so it joins the dock."
+    },
+    {
+      "title": "Mount the dock on two columns",
+      "language": "ts",
+      "snippet": "const dock = new Dock(q(root, '.cv-layers'), q(root, '.cv-props-col'));\ndockRef = dock;\ndock.onChange = () => { syncPropsCol(); props.relayout(); };\nsyncPropsCol();",
+      "whenToUse": "At boot, after panel groups exist."
+    }
+  ],
+  "copies": [],
+  "meta": {
+    "b06Row": 15
+  }
+}
