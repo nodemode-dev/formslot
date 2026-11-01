@@ -102,3 +102,4 @@ These land in later phases; names and shapes are fixed here and change only with
 - 1 · 2026-10-30 · first version, written in Phase S1
 - 1 · 2026-10-30 · v0.2.1, compatible tightening after review: duplicate checked headers, targets without a leading slash and relative corpus paths are 400; `Corpus.remote` never carries credentials
 - 1 · 2026-10-30 · v0.4.0, additive: the symbol, refs, dupes and drift commands, with their unit kinds, edge kinds, tiers, drift states and the stable id form
+- 1 · 2026-10-30 · v0.4.1, conformance: Rust constants are reported as `constant`, as this file always said (v0.4.0 reported them as `const`); `--limit 0` means no limit for clone groups too

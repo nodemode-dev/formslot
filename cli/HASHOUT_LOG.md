@@ -2,8 +2,8 @@
 
 Living log for `formslot-cli`. Source files stay comment-free; what they would have said lives here.
 
-Current build version: v0.4.0
-Last updated: 2026-10-30 · Phases S3 and S4
+Current build version: v0.4.1
+Last updated: 2026-10-30 · Phases S3 and S4, review fixes
 
 ## Org-navi-map
 
@@ -115,7 +115,7 @@ The queries are built as SQL text with quote-doubled literals and run with no bo
 - kind: explainer
 - logged: v0.4.0 · 2026-10-30
 
-`formslot dupes <corpus>` reads the clone tables the engine built with `dedup::link`; it never recomputes anything. It prints the clone groups that have at least two members inside the corpus, then every pair whose two sides are both inside it, grouped by tier (T1, T2, T3). "Largest first" means the longest unit in lines, because the tables hold line ranges, not token counts. `--across <A> <B>` keeps groups that have a member in each corpus and pairs whose sides are in the two corpora, in either order. `--limit N` caps the pair lines per run (200 by default, 0 for all); the line shows the true total at the end. A corpus is resolved by name or by numeric id with one query on `corpus`.
+`formslot dupes <corpus>` reads the clone tables the engine built with `dedup::link`; it never recomputes anything. It prints the clone groups that have at least two members inside the corpus, then every pair whose two sides are both inside it, grouped by tier (T1, T2, T3). "Largest first" means the longest unit in lines, because the tables hold line ranges, not token counts. `--across <A> <B>` keeps groups that have a member in each corpus and pairs whose sides are in the two corpora, in either order. `--limit N` caps the group and pair lines per run (200 by default, 0 for all; since v0.4.1 0 also means all for groups, which used to bind `LIMIT 0` and print none); the line shows the true total at the end. A corpus is resolved by name or by numeric id with one query on `corpus`; since v0.4.1 an exact name wins over an id, as in `symbols_cmd.rs`, so a corpus named "2" and the corpus numbered 2 resolve the same way every time.
 
 Pair line format: `T2 score 1.00  path:start-end qualified  <->  path:start-end qualified`. For T1 and T2 the score is always 1.00; for T3 it is the estimated Jaccard of the two token signatures. Group and pair lines can show a unit against a copy of itself in another corpus under the same path; that is the usual case for shared family code.
 
@@ -128,7 +128,7 @@ Pair line format: `T2 score 1.00  path:start-end qualified  <->  path:start-end 
 
 ### cli · closed pipe
 - refers-to: cli/src/main.rs :: main
-- kind: todo
-- logged: v0.4.0 · 2026-10-30
+- kind: rationale
+- logged: v0.4.0 · 2026-10-30 · resolved v0.4.1
 
-Every command prints with `println!`, which panics when the output pipe closes early (`formslot dupes x | head`). A shared fix belongs in `main.rs` (write through a locked stdout and stop on a broken pipe); it is small and planned with the S8 command work. Per-language files and lines for ts, py, rs, css and js equal research B06's measurements exactly; md, json and html are lower by the generated and mirrored files that are listed but not read. formMCP (96 files) and formskills (90 files) indexed in under 50 ms each. substrata v2.11.1 was refused because the upload has no `.git`.
+Every command prints with `println!`, which panics when the output pipe closes early (`formslot dupes x | head`). Since v0.4.1 `quiet_on_closed_pipe` in `main.rs` installs a panic hook that exits 0 when the panic is the broken pipe and hands every other panic to the default hook; std offers no way to reset SIGPIPE without a new dependency, and one hook covers every command. Per-language files and lines for ts, py, rs, css and js equal research B06's measurements exactly; md, json and html are lower by the generated and mirrored files that are listed but not read. formMCP (96 files) and formskills (90 files) indexed in under 50 ms each. substrata v2.11.1 was refused because the upload has no `.git`.

@@ -2,8 +2,8 @@
 
 Living log for `formslot-core`. Source files stay comment-free; what they would have said lives here.
 
-Current build version: v0.4.0
-Last updated: 2026-10-30 · Phases S3 and S4
+Current build version: v0.4.1
+Last updated: 2026-10-30 · Phases S3 and S4, review fixes
 
 ## Org-navi-map
 
@@ -41,6 +41,7 @@ core/
       001_corpus.sql  corpus, blob, file, licence, findings, family, meta
       002_symbols.sql unit, unit_ref, unit_import, edge, blob.facts
       003_dedup.sql   unit_print, clone_group, clone_member, clone_pair
+      004_facts_family.sql  blob.facts_family, the grammar family facts were read with
 ```
 
 ## Table of contents
@@ -67,6 +68,8 @@ core/
 - migrations/002_symbols.sql
 - dedup.rs
 - migrations/003_dedup.sql
+- migrations/004_facts_family.sql
+- review fixes v0.4.1
 
 ## lib.rs
 
@@ -601,3 +604,56 @@ A caveat for readers of the output: because T2 treats every identifier as `$id`,
 - logged: v0.4.0 · 2026-10-30
 
 `unit_print` is per blob, keyed like `unit` by (object_format, oid, idx) with indexes on `raw_hash` and `norm_hash`; `scheme` records the MinHash family. The three clone tables are derived and rebuilt by `dedup::link` across all corpora. The migration only creates tables; it reads nothing from `unit`, so it does not depend on 002 having data.
+
+## migrations/004_facts_family.sql
+
+### core/src/migrations/004_facts_family.sql · blob.facts_family
+- refers-to: core/src/migrations/004_facts_family.sql :: facts_family
+- kind: rationale
+- logged: v0.4.1 · 2026-10-30
+
+Facts are stored per blob, but the grammar comes from the path. A blob first met under a path with no grammar (Python text committed as `aaa.txt` and again as `zzz.py`) was marked current with no units, and the `.py` path never got them (fresh-context review, reproduced). The column records the family facts were read with; NULL means none. Existing stores have NULL everywhere, so every source blob is read once after the upgrade (formvis: 1,407 blobs, then 0).
+
+## review fixes v0.4.1
+
+### core/src/facts.rs · stale
+- refers-to: core/src/facts.rs :: stale; core/src/facts.rs :: index_blob
+- kind: rationale
+- logged: v0.4.1 · 2026-10-30
+
+A blob is stale when its facts version is old, or when it was read with no grammar family and the path now being processed has one. Once read with a family it is never re-read for a different one, so two paths with different grammars and the same content cannot make it flip on every run. The untouched-path check in `corpus.rs` (incremental runs) applies the same rule in SQL. `symbols::persist::store` no longer writes `facts = 1` itself: `index_blob` writes the version and the family once, after both symbols and prints are stored.
+
+### core/src/corpus.rs · link skipped when nothing changed
+- refers-to: core/src/corpus.rs :: index
+- kind: rationale
+- logged: v0.4.1 · 2026-10-30
+
+`dedup::link` rebuilds the clone tables for every corpus inside the index's write transaction. A reindex at the same head that read no blob and removed no path changes nothing the link reads, so it is skipped (formvis same-commit reindex 50 ms; the probe repository 11 ms). Moving the link out of the index transaction, or making it per corpus, is left for when many corpora share a store.
+
+### core/src/symbols/mod.rs · MAX_NESTING
+- refers-to: core/src/symbols/mod.rs :: Cx::enter; core/src/symbols/mod.rs :: MAX_NESTING
+- kind: warning-context
+- logged: v0.4.1 · 2026-10-30
+
+The CSS rule walk, the Rust item walk and the TypeScript namespace walk recurse per nesting level. A 40 KB file nested 20,000 deep overflowed the stack, which aborts the process (no panic to catch), so every retry of the index would abort again. `enter` refuses past 200 levels and the walk stops descending there; units above the cap are kept. The probe repository with 20,000 levels of CSS and Rust now indexes and lists 200 units for each.
+
+### core/src/symbols/typescript.rs · unwrap_statement
+- refers-to: core/src/symbols/typescript.rs :: unwrap_statement
+- kind: explainer
+- logged: v0.4.1 · 2026-10-30
+
+tree-sitter-typescript parses a top-level `namespace A { }` or `module A { }` that is not exported as an expression statement holding the `internal_module`, so the declaration match never saw it and its members were missing. The statement is unwrapped at the top level and inside namespace bodies.
+
+### core/src/symbols/rust.rs · const kind
+- refers-to: core/src/symbols/rust.rs :: item_list
+- kind: rationale
+- logged: v0.4.1 · 2026-10-30
+
+A Rust `const` is kind `constant`, as `docs/CONTRACT.md` says; `const` is kept for exported TypeScript constants. formvis has 70 Rust constants.
+
+### core/src/dedup.rs · link savepoint
+- refers-to: core/src/dedup.rs :: link; core/src/dedup.rs :: link_all
+- kind: rationale
+- logged: v0.4.1 · 2026-10-30
+
+`link` opens the savepoint and releases it on success, or rolls back to it and releases it on error, the same pattern as `symbols::link`; the work is `link_all`. Before, an error left the savepoint open and the clone tables half deleted, which was safe only because the caller always dropped its transaction.
