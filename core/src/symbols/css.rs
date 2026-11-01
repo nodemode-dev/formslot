@@ -15,6 +15,14 @@ pub(crate) fn run(cx: &mut Cx, root: Node) {
 }
 
 fn visit(cx: &mut Cx, node: Node, parent: Option<usize>) {
+    if !cx.enter() {
+        return;
+    }
+    visit_children(cx, node, parent);
+    cx.leave();
+}
+
+fn visit_children(cx: &mut Cx, node: Node, parent: Option<usize>) {
     let mut cursor = node.walk();
     let children: Vec<Node> = node.named_children(&mut cursor).collect();
     for child in children {

@@ -24,8 +24,20 @@ fn top(cx: &mut Cx, node: Node, listed: &mut HashSet<String>) {
     match node.kind() {
         "export_statement" => export(cx, node, listed),
         "import_statement" => import(cx, node),
-        _ => declaration(cx, node, node, false, None),
+        _ => declaration(cx, node, unwrap_statement(node), false, None),
     }
+}
+
+fn unwrap_statement(node: Node) -> Node {
+    if node.kind() == "expression_statement" {
+        let mut cursor = node.walk();
+        if let Some(inner) = node.named_children(&mut cursor).next() {
+            if inner.kind() == "internal_module" || inner.kind() == "module" {
+                return inner;
+            }
+        }
+    }
+    node
 }
 
 fn strip_quotes(text: &str) -> String {
@@ -147,6 +159,9 @@ fn declaration(cx: &mut Cx, outer: Node, decl: Node, exported: bool, parent: Opt
             let qualified = qualify(cx, parent, &name);
             let body = decl.child_by_field_name("body");
             let id = cx.unit("namespace", &name, &qualified, outer, body, exported, parent);
+            if !cx.enter() {
+                return;
+            }
             if let Some(body) = body {
                 let mut cursor = body.walk();
                 let children: Vec<Node> = body.named_children(&mut cursor).collect();
@@ -156,10 +171,11 @@ fn declaration(cx: &mut Cx, outer: Node, decl: Node, exported: bool, parent: Opt
                             declaration(cx, child, inner, true, Some(id));
                         }
                     } else {
-                        declaration(cx, child, child, false, Some(id));
+                        declaration(cx, child, unwrap_statement(child), false, Some(id));
                     }
                 }
             }
+            cx.leave();
         }
         _ => {}
     }

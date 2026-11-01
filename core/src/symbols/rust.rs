@@ -93,6 +93,14 @@ fn join(prefix: &str, name: &str) -> String {
 }
 
 fn items(cx: &mut Cx, container: Node, prefix: &str, parent: Option<usize>, in_type: bool) {
+    if !cx.enter() {
+        return;
+    }
+    item_list(cx, container, prefix, parent, in_type);
+    cx.leave();
+}
+
+fn item_list(cx: &mut Cx, container: Node, prefix: &str, parent: Option<usize>, in_type: bool) {
     let mut cursor = container.walk();
     let children: Vec<Node> = container.named_children(&mut cursor).collect();
     let mut tauri = false;
@@ -127,7 +135,7 @@ fn items(cx: &mut Cx, container: Node, prefix: &str, parent: Option<usize>, in_t
             "enum_item" => simple(cx, node, "enum", prefix, parent, exported),
             "type_item" => simple(cx, node, "type", prefix, parent, exported),
             "const_item" | "static_item" => {
-                let kind = if node.kind() == "const_item" { "const" } else { "static" };
+                let kind = if node.kind() == "const_item" { "constant" } else { "static" };
                 let name = cx.field_text(node, "name").to_string();
                 let qualified = join(prefix, &name);
                 cx.unit(kind, &name, &qualified, node, node.child_by_field_name("value"), exported, parent);

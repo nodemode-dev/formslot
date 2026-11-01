@@ -163,7 +163,10 @@ pub(crate) struct Cx<'a> {
     pub src: &'a str,
     pub out: Extracted,
     seen: HashSet<(String, &'static str, u32)>,
+    depth: usize,
 }
+
+pub(crate) const MAX_NESTING: usize = 200;
 
 impl<'a> Cx<'a> {
     fn new(src: &'a str) -> Cx<'a> {
@@ -171,7 +174,20 @@ impl<'a> Cx<'a> {
             src,
             out: Extracted::default(),
             seen: HashSet::new(),
+            depth: 0,
         }
+    }
+
+    pub(crate) fn enter(&mut self) -> bool {
+        if self.depth >= MAX_NESTING {
+            return false;
+        }
+        self.depth += 1;
+        true
+    }
+
+    pub(crate) fn leave(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
     }
 
     pub(crate) fn text(&self, node: Node) -> &'a str {
