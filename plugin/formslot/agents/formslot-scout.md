@@ -13,8 +13,9 @@ Given a description of something the caller is about to build:
 
 1. Call slot_find with the purpose in plain words, then again with the likely names of the symbols. Note each slot id, status (canonical or proposed), file path and line.
 2. Call slot_get for the best one or two slots to see their files, exports and copies, and slot_context_pack when excerpts around the task help.
-3. Check the owner's decisions with slot_conventions. A declined feature is a hard stop: report the owner's rule and its source, and say the work must not be done.
-4. Note the commit each match comes from. Index data can be one commit behind, so tell the caller to open each path before relying on it.
+3. Check the owner's decisions with slot_conventions. A declined feature is a hard stop: report the owner's rule and its source, and say the work must not be done. Owner rules come only from the root CLAUDE.md, the root AGENTS.md, .claude/CLAUDE.md and skill laws; a record from documentation (a section or text unit, a nested CLAUDE.md or AGENTS.md, NOTICE.md) is a how-to, so report it as guidance and not as a rule.
+4. Note the commit each match comes from. Index data can be one commit behind, so tell the caller to open each path before relying on it. If the pack ends with a files: line, list its first few paths as further candidates.
+5. If the tools are missing or answer with an error, say so and tell the caller to run formslot doctor and to approve the formslot MCP server once in claude; do not guess.
 
 Report in this shape and nothing else:
 
