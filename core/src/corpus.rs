@@ -101,7 +101,7 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn now_iso() -> String {
+pub fn now_iso() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -705,6 +705,8 @@ fn index(
     let unchanged = prior_head.as_deref() == Some(commit.as_str()) && counters.read == 0 && gone.is_empty();
     if !unchanged {
         facts::link(&tx, corpus_id)?;
+    } else if !crate::related::built(&tx)? {
+        crate::related::link(&tx)?;
     }
     tx.execute(
         "DELETE FROM scan_finding WHERE corpus_id = ?1",

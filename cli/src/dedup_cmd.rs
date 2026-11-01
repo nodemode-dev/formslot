@@ -1,11 +1,13 @@
 use std::process::ExitCode;
 
 use formslot_core::dedup::{self, DriftRow};
+use formslot_core::related;
 use formslot_core::store::Store;
 use formslot_core::config;
 use rusqlite::{Connection, params};
 
 const DEFAULT_LIMIT: usize = 200;
+const RELATED_DEFAULT_LIMIT: usize = 0;
 
 fn open() -> Result<Store, String> {
     Store::open(&config::corpus_db())
@@ -147,12 +149,108 @@ fn print_pairs(conn: &Connection, scope: &str, limit: usize) -> Result<usize, St
     Ok(total)
 }
 
+struct RelatedRow {
+    reason: String,
+    score: f64,
+    a: (i64, String, String, i64, i64),
+    b: (i64, String, String, i64, i64),
+}
+
+fn family_of(qualified: &str) -> String {
+    related::normalise_name(related::last_segment(qualified))
+}
+
+fn print_related(conn: &Connection, scope: &str, limit: usize) -> Result<usize, String> {
+    let query = format!(
+        "SELECT reason, score, a_corpus, a_path, a_qualified, a_start, a_end,
+                b_corpus, b_path, b_qualified, b_start, b_end
+         FROM related_pair WHERE {scope}"
+    );
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let rows: Vec<RelatedRow> = stmt
+        .query_map([], |r| {
+            Ok(RelatedRow {
+                reason: r.get(0)?,
+                score: r.get(1)?,
+                a: (r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?),
+                b: (r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    let total = rows.len();
+    let named: std::collections::HashSet<String> = rows
+        .iter()
+        .filter(|r| r.reason == "same_name")
+        .map(|r| family_of(&r.a.2))
+        .collect();
+    let keys: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            let (a, b) = (family_of(&r.a.2), family_of(&r.b.2));
+            if r.reason == "same_name" || named.contains(&a) || !named.contains(&b) {
+                a
+            } else {
+                b
+            }
+        })
+        .collect();
+    let mut best: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+    for (i, row) in rows.iter().enumerate() {
+        let slot = best.entry(keys[i].as_str()).or_insert(0.0);
+        if row.score > *slot {
+            *slot = row.score;
+        }
+    }
+    let mut order: Vec<usize> = (0..rows.len()).collect();
+    order.sort_by(|&x, &y| {
+        let (rx, ry) = (&rows[x], &rows[y]);
+        best[keys[y].as_str()]
+            .partial_cmp(&best[keys[x].as_str()])
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(keys[x].cmp(&keys[y]))
+            .then((rx.reason != "same_name").cmp(&(ry.reason != "same_name")))
+            .then(ry.score.partial_cmp(&rx.score).unwrap_or(std::cmp::Ordering::Equal))
+            .then(rx.a.1.cmp(&ry.a.1))
+            .then(rx.a.3.cmp(&ry.a.3))
+    });
+    let mut current: Option<&str> = None;
+    let mut printed = 0usize;
+    for i in order {
+        if limit != 0 && printed >= limit {
+            break;
+        }
+        if current.is_some() && current != Some(keys[i].as_str()) {
+            println!();
+        }
+        current = Some(keys[i].as_str());
+        let row = &rows[i];
+        println!(
+            "R {} {:.2}  {}:{}-{} {}  <->  {}:{}-{} {}",
+            row.reason, row.score, row.a.1, row.a.3, row.a.4, row.a.2, row.b.1, row.b.3, row.b.4, row.b.2
+        );
+        printed += 1;
+    }
+    Ok(total)
+}
+
+fn show(conn: &Connection, related: bool, groups: &str, pairs: &str, limit: usize) -> Result<usize, String> {
+    if related {
+        print_related(conn, pairs, limit)
+    } else {
+        print_groups(conn, groups, limit).and_then(|_| print_pairs(conn, pairs, limit))
+    }
+}
+
 pub fn dupes(args: &[String]) -> ExitCode {
     let limit = match limit_of(args) {
         Ok(v) => v,
         Err(e) => return fail(&e),
     };
     let across = args.iter().any(|a| a == "--across");
+    let related = args.iter().any(|a| a == "--related");
+    let limit = if related && option(args, "--limit").is_none() { RELATED_DEFAULT_LIMIT } else { limit };
     let names = positionals(args);
     let store = match open() {
         Ok(s) => s,
@@ -161,7 +259,7 @@ pub fn dupes(args: &[String]) -> ExitCode {
     let conn = store.conn();
     let result = if across {
         if names.len() != 2 {
-            return fail("usage: formslot dupes --across <corpusA> <corpusB> [--limit N]");
+            return fail("usage: formslot dupes --across <corpusA> <corpusB> [--limit N] [--related]");
         }
         let (a, a_name) = match resolve(conn, &names[0]) {
             Ok(v) => v,
@@ -171,32 +269,36 @@ pub fn dupes(args: &[String]) -> ExitCode {
             Ok(v) => v,
             Err(e) => return fail(&e),
         };
-        println!("clones between {a_name} and {b_name}\n");
+        println!("{} between {a_name} and {b_name}\n", if related { "related code" } else { "clones" });
         let groups = format!(
             "g.id IN (SELECT group_id FROM clone_member WHERE corpus_id = {a}) AND g.id IN (SELECT group_id FROM clone_member WHERE corpus_id = {b})"
         );
         let pairs = format!(
             "((a_corpus = {a} AND b_corpus = {b}) OR (a_corpus = {b} AND b_corpus = {a}))"
         );
-        print_groups(conn, &groups, limit).and_then(|_| print_pairs(conn, &pairs, limit))
+        show(conn, related, &groups, &pairs, limit)
     } else {
         if names.len() != 1 {
-            return fail("usage: formslot dupes <corpus> [--limit N]  or  formslot dupes --across <corpusA> <corpusB>");
+            return fail("usage: formslot dupes <corpus> [--limit N] [--related]  or  formslot dupes --across <corpusA> <corpusB> [--related]");
         }
         let (id, name) = match resolve(conn, &names[0]) {
             Ok(v) => v,
             Err(e) => return fail(&e),
         };
-        println!("clones inside {name}\n");
+        println!("{} inside {name}\n", if related { "related code" } else { "clones" });
         let groups = format!(
             "g.id IN (SELECT group_id FROM clone_member WHERE corpus_id = {id} GROUP BY group_id HAVING COUNT(*) >= 2)"
         );
         let pairs = format!("a_corpus = {id} AND b_corpus = {id}");
-        print_groups(conn, &groups, limit).and_then(|_| print_pairs(conn, &pairs, limit))
+        show(conn, related, &groups, &pairs, limit)
     };
     match result {
         Ok(0) => {
-            println!("no clones found; run an index first so the units and prints exist");
+            if related {
+                println!("no related pairs found; run an index first so the units and prints exist");
+            } else {
+                println!("no clones found; run an index first so the units and prints exist");
+            }
             ExitCode::SUCCESS
         }
         Ok(total) => {

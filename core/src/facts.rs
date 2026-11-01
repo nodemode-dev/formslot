@@ -1,6 +1,6 @@
 use rusqlite::{Connection, params};
 
-use crate::{dedup, select, symbols};
+use crate::{dedup, related, select, symbols};
 
 pub const VERSION: i64 = 1;
 
@@ -50,5 +50,6 @@ pub fn index_blob(conn: &Connection, object_format: &str, oid: &str, path: &str,
 pub fn link(conn: &Connection, corpus_id: i64) -> crate::Result<()> {
     symbols::link(conn, corpus_id)?;
     dedup::link(conn)?;
+    related::link(conn)?;
     Ok(())
 }

@@ -13,7 +13,9 @@ pub mod hygiene;
 pub mod licence;
 pub mod log;
 pub mod redact;
+pub mod related;
 pub mod select;
+pub mod slots;
 pub mod store;
 pub mod symbols;
 
