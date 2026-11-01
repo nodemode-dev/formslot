@@ -6,6 +6,7 @@ use std::time::Duration;
 mod corpus_cmd;
 mod dedup_cmd;
 mod memory_cmd;
+mod search_cmd;
 mod slot_cmd;
 mod symbols_cmd;
 
@@ -42,6 +43,10 @@ const HELP: &str = "formslot: the Form family's context service
   memory list [--kind K] [--status S] [--corpus C] [--limit N] [--count] [--json]   the records
   recall <query> [--anchor path#symbol] [--kind K] [--corpus C] [--limit N] [--json]   ranked records, with a token estimate
   remember --propose <text> [--anchor path#symbol] [--kind decision|how-to]   store a proposal and print NOOP, MERGE, SUPERSEDE or ADD
+  search <query> [--corpus C] [--limit N] [--json]   ranked units, slots and memory records
+  search rebuild [--corpus C]       rebuild the search indexes
+  map <corpus> [--tokens N] [--formmap]   the ranked repo map, or FORMMAP.md under 150 lines
+  pack <task> [--corpus C] [--tokens N] [--tier T1|T4|T16] [--json]   a P0/P1/P2 context pack
   version    print the version
   help       this text
 
@@ -87,6 +92,9 @@ fn main() -> ExitCode {
         "refs" => symbols_cmd::refs(&args[1..]),
         "dupes" => dedup_cmd::dupes(&args[1..]),
         "drift" => dedup_cmd::drift(&args[1..]),
+        "search" => search_cmd::run(&args[1..]),
+        "map" => search_cmd::map(&args[1..]),
+        "pack" => search_cmd::pack(&args[1..]),
         "version" | "--version" | "-V" => {
             println!("formslot {VERSION}");
             ExitCode::SUCCESS

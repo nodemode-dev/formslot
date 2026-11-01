@@ -702,6 +702,7 @@ fn index(
     .map_err(sql)?;
     refresh_roles(&tx, &ctx, &format, corpus_id)?;
     refresh_licences(&tx, &format, corpus_id)?;
+    crate::search::index::sync(&tx, corpus_id, &format, repo)?;
     let unchanged = prior_head.as_deref() == Some(commit.as_str()) && counters.read == 0 && gone.is_empty();
     if !unchanged {
         facts::link(&tx, corpus_id)?;
