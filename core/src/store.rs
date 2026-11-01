@@ -3,7 +3,11 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
-const MIGRATIONS: &[&str] = &[include_str!("migrations/001_corpus.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/001_corpus.sql"),
+    include_str!("migrations/002_symbols.sql"),
+    include_str!("migrations/003_dedup.sql"),
+];
 
 pub struct Store {
     conn: Connection,

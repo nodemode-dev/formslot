@@ -6,6 +6,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+use crate::facts;
 use crate::git::{BlobReader, Entry, Repo};
 use crate::hygiene;
 use crate::licence;
@@ -443,6 +444,9 @@ fn store_blob(
         .map_err(sql)?;
     }
     counters.secrets += findings.len() as u64;
+    if !binary {
+        facts::index_blob(tx, format, &entry.oid, &entry.path, &String::from_utf8_lossy(data))?;
+    }
     Ok(binary)
 }
 
@@ -461,8 +465,18 @@ fn process_entry(
     if select::skip_read(&entry.path, ctx) || entry.size > MAX_READ {
         counters.skipped += 1;
     } else if let Some(known) = blob_binary(tx, format, &entry.oid)? {
-        counters.reused += 1;
         binary = known;
+        if !known && facts::stale(tx, format, &entry.oid)? {
+            match reader.read(&entry.oid)? {
+                Some(data) => {
+                    counters.read += 1;
+                    facts::index_blob(tx, format, &entry.oid, &entry.path, &String::from_utf8_lossy(&data))?;
+                }
+                None => counters.reused += 1,
+            }
+        } else {
+            counters.reused += 1;
+        }
     } else {
         match reader.read(&entry.oid)? {
             Some(data) => {
@@ -623,8 +637,8 @@ fn index(
                 }
                 let stored: bool = tx
                     .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM blob WHERE object_format = ?1 AND oid = ?2)",
-                        params![format, entry.oid],
+                        "SELECT EXISTS(SELECT 1 FROM blob WHERE object_format = ?1 AND oid = ?2 AND (is_binary = 1 OR facts >= ?3))",
+                        params![format, entry.oid, facts::VERSION],
                         |row| row.get(0),
                     )
                     .map_err(sql)?;
@@ -683,6 +697,7 @@ fn index(
     .map_err(sql)?;
     refresh_roles(&tx, &ctx, &format, corpus_id)?;
     refresh_licences(&tx, &format, corpus_id)?;
+    facts::link(&tx, corpus_id)?;
     tx.execute(
         "DELETE FROM scan_finding WHERE corpus_id = ?1",
         params![corpus_id],

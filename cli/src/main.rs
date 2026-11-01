@@ -4,6 +4,8 @@ use std::process::{Command, ExitCode};
 use std::time::Duration;
 
 mod corpus_cmd;
+mod dedup_cmd;
+mod symbols_cmd;
 
 use formslot_core::discovery::{self, ServiceInfo};
 use formslot_core::{CONTRACT, VERSION, api, config, http, log};
@@ -19,6 +21,11 @@ const HELP: &str = "formslot: the Form family's context service
   stats <name> [--json]             files, lines and bytes by language, roles, licences
   files <name> [--role R] [--language L]   list indexed paths
   family --family-json <path> [--check]    the family list from formMCP's family.json
+  symbols <name> [--lang L] [--kind K] [--exported] [--count]   extracted units
+  show <name> <path>#<qualified>            one unit, what it calls, who uses it
+  refs <name> <symbol>                      every edge that points at a name
+  dupes <name> | dupes --across <a> <b>     clone groups and near-duplicates by tier
+  drift <a> <b>                             how shared code differs between two corpora
   version    print the version
   help       this text
 
@@ -38,6 +45,11 @@ fn main() -> ExitCode {
         "stats" => corpus_cmd::stats(&args[1..]),
         "files" => corpus_cmd::files(&args[1..]),
         "family" => corpus_cmd::family(&args[1..]),
+        "symbols" => symbols_cmd::symbols(&args[1..]),
+        "show" => symbols_cmd::show(&args[1..]),
+        "refs" => symbols_cmd::refs(&args[1..]),
+        "dupes" => dedup_cmd::dupes(&args[1..]),
+        "drift" => dedup_cmd::drift(&args[1..]),
         "version" | "--version" | "-V" => {
             println!("formslot {VERSION}");
             ExitCode::SUCCESS
