@@ -200,3 +200,35 @@ Ingest read only CLAUDE.md, AGENTS.md, one-level SKILL.md (items under a laws he
 
 `load_texts` leaves out every file that has a `scan_finding` row for the corpus, so ingest never builds a record, decline or anchor from a file the secret scan flagged. Records are still redacted at insert; this keeps the flagged file's other text out of the store altogether.
 
+### core/src/memory/ingest.rs · review lows status
+
+- refers-to: core/src/memory/ingest.rs :: reconcile, check_anchors, doc_items, gather
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+Status of the five open lows, checked against the live code and the v0.12.0 store copy, not against old log claims. (1) A source-gone record returning through an anchor restore: closed. `reconcile` writes the source-level `stale` event for an untaken stale record whose latest event is anchor-stale, and `check_anchors` restores only when the latest event is anchor-stale; both are in the code and the unchanged ingest reports 0 restored. (2) Substring recall scoring: closed. `recall.rs :: score_of` compares whole-word sets and space-padded phrases, terms under 2 characters are dropped. (3) `remember` without a transaction: closed. `propose` runs its insert and event in one SAVEPOINT, and a NOOP adds an event to the existing record instead of a row. (4) Unchanged re-ingest time: the parse cost was closed in v0.9.0; measured on the v0.12.0 store copy with the v0.12.0 binary, an unchanged formvis ingest took 0.78 s (8,272 records); now it is skipped, see the fingerprint entry. (5) Open and fixed now: owner authority at any CLAUDE.md depth, and the `doc_items` caps, see the two entries below.
+
+### core/src/memory/ingest.rs · owner sources are root only
+
+- refers-to: core/src/memory/ingest.rs :: gather, decline_files, is_root
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+Owner authority came from a `CLAUDE.md`, `AGENTS.md` or `NOTICE.md` at any depth, so a vendored or template sub-folder file could write rules into P0. Real case: the subform template `backend/app/templates/common/CLAUDE.md` (placeholders such as `{{name}}`) produced 16 owner rules in the subform store. Now only the repository-root `CLAUDE.md` and `AGENTS.md` and the harness laws in `.claude/skills/<skill>/SKILL.md` (items under a laws heading, depth fixed) give owner `rule` records. A nested `CLAUDE.md` or `AGENTS.md` is read like any other Markdown file: derived `how-to` records through `doc_items`, no triggers, so it stays findable by search and recall but never enters P0 or the PreToolUse check. Ignoring it was rejected because its text is still useful how-to for the sub-package. `NOTICE.md` at any depth, root included, also gives derived `how-to` only, because the brief limits owner rules to CLAUDE.md, AGENTS.md and the harness laws; its rows were already ingested as how-to, and its four former rule headings now come through `doc_items` too. Cost: three formvis owner rules from NOTICE.md became how-to (44 to 41 active rules). Declines (owner authority) are taken only from the root files and the skill files: HASHOUT logs and CHANGELOG no longer mint `declined` records, since formslot's own log quotes formvis's decline text. Existing records are never deleted: the next ingest marks the old nested and NOTICE rule records `stale` with the usual source event (subform: 16 rules; formvis: 3).
+
+### core/src/memory/ingest.rs · doc_items caps
+
+- refers-to: core/src/memory/ingest.rs :: doc_items, DOC_MAX_RECORDS, DOC_MAX_BYTES
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+`doc_items` had no limit, so one big table or manual could create thousands of records (formvis NOTICE.md alone gave 792 rows, formvis docs made 1,972 how-to records). Each file now keeps its first 400 items (blocks and table rows merged in line order) and at most 128 KiB of record text, whichever binds first; the rest are dropped, not stored. The caps sit above every file in subform and formslot, so only the formvis NOTICE.md table is cut (792 to 400; 392 records go stale on the next ingest). Cutting in line order keeps the top of a file, where the headings and the introductory rules are. A change of the caps changes records, so the next ingest reconciles them as new or stale; nothing is deleted.
+
+### core/src/memory/ingest.rs · unchanged ingest is skipped
+
+- refers-to: core/src/memory/ingest.rs :: fingerprint, ingest_with, INGEST_FORMAT
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+After a successful ingest the run stores in the existing `meta` table (key `memory_ingest:<corpus id>`, no migration) a SHA-256 over: the binary version, `INGEST_FORMAT` (a number to raise when the ingest rules change without a version bump), the declines override file or `built-in`, every `path, oid, role` of the corpus files that classify as a memory source, the scan-finding paths, and per status the count, highest id and latest `updated_at` of the non-agent records. The next ingest computes the fingerprint first; if it equals the stored one the sources, the units (keyed by blob oid) and the records are as the last run left them, and the report is built from the stored source and item counts and the live record counts with `skipped: true` (a new field; `anchors` is zero because no check ran). The write is inside the ingest savepoint, so a failed run leaves no fingerprint. A changed record count or timestamp, an owner supersede or an upgrade makes the next run a full one. Measured on the store copy: formvis 0.78 s (v0.12.0, unchanged) to 0.03 s, subform 0.02 s, results identical (7,877 items unchanged, 0 added). The CLI should print the skipped flag; that line belongs to the cli owner.
+

@@ -2,10 +2,11 @@ use std::collections::HashSet;
 
 use rusqlite::{Connection, params};
 
-use super::text::{fts_or, query_terms, split_words, stem, trigram_terms};
+use super::text::{LEXICAL_TERM_CAP, fts_or, query_terms, query_terms_cap, split_words, stem, trigram_terms};
 use super::{Hit, Target};
 use crate::symbols::stable_id;
 
+const RARE_IDF: f64 = 4.5;
 const UNIT_COLUMNS: &str = "s.id, s.corpus_id, s.path, s.qualified, s.kind, s.signature, s.start_line, s.end_line";
 
 fn sql(e: rusqlite::Error) -> String {
@@ -61,28 +62,67 @@ fn names(corpora: &[Target]) -> impl Fn(i64) -> String + '_ {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum Pool {
+    All,
+    Code,
+    Text,
+}
+
+fn pool_filter(pool: Pool) -> &'static str {
+    match pool {
+        Pool::All => "",
+        Pool::Code => " AND s.kind NOT IN ('section', 'text')",
+        Pool::Text => " AND s.kind IN ('section', 'text')",
+    }
+}
+
 pub fn lexical(conn: &Connection, corpora: &[Target], scope: Option<i64>, query: &str, limit: usize) -> crate::Result<Vec<Hit>> {
-    let Some(m) = fts_or(&query_terms(query)) else {
+    lexical_in(conn, corpora, scope, query, limit, Pool::All)
+}
+
+pub fn lexical_in(
+    conn: &Connection,
+    corpora: &[Target],
+    scope: Option<i64>,
+    query: &str,
+    limit: usize,
+    pool: Pool,
+) -> crate::Result<Vec<Hit>> {
+    let Some(m) = fts_or(&query_terms_cap(query, LEXICAL_TERM_CAP)) else {
         return Ok(Vec::new());
     };
     let sql_text = format!(
         "SELECT {UNIT_COLUMNS}, bm25(unit_fts, 8.0, 6.0, 2.0, 1.0) AS rank FROM unit_fts \
          JOIN search_unit s ON s.id = unit_fts.rowid \
-         WHERE unit_fts MATCH ?1 AND (?2 IS NULL OR s.corpus_id = ?2) \
-         ORDER BY rank, s.path, s.qualified LIMIT ?3"
+         WHERE unit_fts MATCH ?1 AND (?2 IS NULL OR s.corpus_id = ?2){} \
+         ORDER BY rank, s.path, s.qualified LIMIT ?3",
+        pool_filter(pool)
     );
     collect(conn, &sql_text, params![m, scope, (limit * 3) as i64], corpora, limit, "lexical")
 }
 
 pub fn trigram(conn: &Connection, corpora: &[Target], scope: Option<i64>, query: &str, limit: usize) -> crate::Result<Vec<Hit>> {
+    trigram_in(conn, corpora, scope, query, limit, Pool::All)
+}
+
+pub fn trigram_in(
+    conn: &Connection,
+    corpora: &[Target],
+    scope: Option<i64>,
+    query: &str,
+    limit: usize,
+    pool: Pool,
+) -> crate::Result<Vec<Hit>> {
     let Some(m) = fts_or(&trigram_terms(query)) else {
         return Ok(Vec::new());
     };
     let sql_text = format!(
         "SELECT {UNIT_COLUMNS}, bm25(unit_tri, 5.0, 3.0, 2.0) AS rank FROM unit_tri \
          JOIN search_unit s ON s.id = unit_tri.rowid \
-         WHERE unit_tri MATCH ?1 AND (?2 IS NULL OR s.corpus_id = ?2) \
-         ORDER BY rank, s.path, s.qualified LIMIT ?3"
+         WHERE unit_tri MATCH ?1 AND (?2 IS NULL OR s.corpus_id = ?2){} \
+         ORDER BY rank, s.path, s.qualified LIMIT ?3",
+        pool_filter(pool)
     );
     collect(conn, &sql_text, params![m, scope, (limit * 3) as i64], corpora, limit, "trigram")
 }
@@ -186,9 +226,34 @@ pub fn memory(conn: &Connection, scope: Option<i64>, query: &str, limit: usize) 
     memory_by(conn, scope, query, limit, None)
 }
 
+fn term_weights(conn: &Connection, query: &str) -> Vec<(String, f64)> {
+    let total: f64 = conn
+        .query_row("SELECT COUNT(*) FROM memory_record WHERE status = 'active'", [], |r| r.get::<_, i64>(0))
+        .map(|n| n as f64)
+        .unwrap_or(0.0);
+    let mut out: Vec<(String, f64)> = Vec::new();
+    for term in query_terms(query) {
+        let Some(m) = fts_or(std::slice::from_ref(&term)) else { continue };
+        let df: f64 = conn
+            .query_row("SELECT COUNT(*) FROM memory_fts WHERE memory_fts MATCH ?1", params![m], |r| r.get::<_, i64>(0))
+            .map(|n| n as f64)
+            .unwrap_or(0.0);
+        if df == 0.0 {
+            continue;
+        }
+        let idf = (1.0 + (total - df + 0.5) / (df + 0.5)).ln();
+        let key = stem(&term);
+        if !out.iter().any(|(k, _)| *k == key) {
+            out.push((key, idf));
+        }
+    }
+    out
+}
+
 pub fn covered(conn: &Connection, hits: Vec<Hit>, query: &str, share: f64) -> Vec<Hit> {
-    let terms: HashSet<String> = query_terms(query).iter().map(|t| stem(t)).collect();
-    if terms.is_empty() {
+    let weights = term_weights(conn, query);
+    let whole: f64 = weights.iter().map(|(_, w)| w).sum();
+    if weights.is_empty() || whole <= 0.0 {
         return Vec::new();
     }
     hits.into_iter()
@@ -199,8 +264,11 @@ pub fn covered(conn: &Connection, hits: Vec<Hit>, query: &str, share: f64) -> Ve
                 return false;
             };
             let words: HashSet<String> = split_words(&text).iter().map(|w| stem(w)).collect();
-            let matched = terms.iter().filter(|t| words.contains(*t)).count();
-            matched as f64 / terms.len() as f64 >= share
+            let found: Vec<f64> = weights.iter().filter(|(t, _)| words.contains(t)).map(|(_, w)| *w).collect();
+            let mass: f64 = found.iter().sum();
+            found.len() as f64 / weights.len() as f64 >= share
+                || mass / whole >= share
+                || found.iter().any(|w| *w >= RARE_IDF)
         })
         .collect()
 }

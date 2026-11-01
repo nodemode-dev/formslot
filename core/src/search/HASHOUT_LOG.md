@@ -230,3 +230,35 @@ The doc-unit query skips any file that has a `scan_finding` row for its corpus, 
 - logged: v0.11.0 · 2026-10-30
 
 `mode_of` returns None under `docs/eval/` so the evaluation's own gold and reports cannot be retrieved as answers. A heading loses only a closing `\s+#+` sequence, so `## C#` stays `C#`. The open fence remembers its marker character and length: a `~~~` line inside a backtick fence no longer toggles, and only a bare marker at least as long closes it. Duplicate section trails are numbered from a HashMap counter instead of rescanning a Vec for each retry, which was quadratic on files with many equal headings.
+
+### core/src/search/slots.rs · rank, grounded
+
+- refers-to: core/src/search/slots.rs :: rank, Match
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+A slot from another repository took the top ranks of unrelated tasks at weight 2.0, because the best text match of a slot list always exists, however weak. A slot is now `grounded` when its origin repository is the searched one (or is empty), or when a unit of the pool sits in one of its files, or when the query terms found in its text carry at least 60 percent of the idf mass of the query terms that occur in any slot. Ungrounded slots enter the fusion at weight 0.5 in their own list; grounded ones stay at 2.0. Count coverage (40 percent) was tried first and dropped: the formvis toast slot is the right answer to a subform "show a failure notice" task on one weak word, and a count threshold demoted it. On the tuning halves, subform R@1 0.243 to 0.378 and R@4 0.432 to 0.649; gold.jsonl tuning kept R@10 (0.807 to 0.798) once own-repository slots were exempt (demoting those too cost formvis R@10 0.807 to 0.711). Coverage 0.6, 0.7 and 0.85 gave the same numbers; 0.6 was kept. The one case that loses: a foreign slot that is right on a short, paraphrased task falls to weight 0.5 unless a unit of the pool names one of its files.
+
+### core/src/search/mod.rs · retrieve_with (text pool)
+
+- refers-to: core/src/search/mod.rs :: retrieve_with, WEIGHT_TEXT
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+R@1 and R@4 had fallen on the subform and formvis tuning halves when doc units (`section`, `text`) came in, because they shared the lexical and trigram lists with code and pushed code units down a rank each. They now have their own lexical (40) and trigram (20) lists at weight 1.0, as the how-to notes got their own pool; code lists contain code only and feed the graph seeds. The 0.8 text penalty stays (0.6 and 0.9 gave the same or lower R@1; with no penalty subform tuning R@1 fell to 0.297; text weight 0.7 and 1.3 were no better, 1.3 was much worse). The slot file-evidence pool is the fused top ten of all four lists.
+
+### core/src/search/lexical.rs · covered
+
+- refers-to: core/src/search/lexical.rs :: covered, term_weights
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+Convention and decline records ranked below the pack because the 30 percent count coverage was taken over every query term, including function-like words and words that no record contains ("lucide", "vitest"). A record now enters when any of three holds: the share of query terms that occur in the memory index and are found in the record is at least 30 percent, the idf mass of the found terms is at least 30 percent of the mass of the indexed terms, or it holds one rare query term (idf at least 4.5 over all active records). The rule pool widened from 20 to 60 because bm25 puts long records first. Of the six named tasks (h054 h055 h079 h085 h087 h094, all in the held-out half, so none could drive the choice), h055 and h079 are now in the pack, h094 is at rank 7 but not in the pack, h054, h085 and h087 are still missing: their records share no more than one weak word with the task, a paraphrase gap the lexical tiers cannot close.
+
+### core/src/search/index.rs · fts_insert (identifier and path words)
+
+- refers-to: core/src/search/index.rs :: fts_insert, core/src/search/text.rs :: identifier_words, path_words, query_terms_cap
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+Vocabulary-gap code misses, by a general change only. Index side: the full-text row of a unit gets the split words of every compound identifier in its body (camelCase and digit boundaries; snake_case and kebab-case are already separated by the tokenizer), up to 2 KiB, and the split words of its path segments in the signature column. Query side: `query_terms` already split both styles; the lexical query now takes 24 terms instead of 12, because the 13th word of a long task ("trust" in h008) was dropped by position. No synonym list and nothing keyed on gold wording. Result on the five tasks: h008 not found to rank 53, h039 43 to 14 (now in the pack), h042 still not found, h106 61 to 66, h112 76 to 67. The index text changed, so `formslot search rebuild` is needed; trigram rows are unchanged.

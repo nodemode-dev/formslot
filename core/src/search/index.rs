@@ -1,11 +1,12 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::docs;
-use super::text::split_words;
+use super::text::{identifier_words, path_words, split_words};
 use crate::git::{BlobReader, Repo};
 
 const BODY_CAP: usize = 8192;
 const CONTAINER_BODY_CAP: usize = 1536;
+const IDENTIFIER_CAP: usize = 2048;
 const CONTAINER_KINDS: [&str; 6] = ["class", "namespace", "mod", "struct", "trait", "interface"];
 
 #[derive(Debug, Clone, Default)]
@@ -69,6 +70,29 @@ fn units_of(conn: &Connection, format: &str, oid: &str) -> crate::Result<Vec<Uni
     rows.collect::<Result<Vec<_>, _>>().map_err(sql)
 }
 
+fn fts_insert(
+    conn: &Connection,
+    id: i64,
+    name: &str,
+    qualified: &str,
+    signature: &str,
+    body: &str,
+    path: &str,
+) -> crate::Result<()> {
+    let words = split_words(qualified).join(" ");
+    let signature = format!("{signature} {}", path_words(path));
+    let body = format!("{body}\n{}", identifier_words(body, IDENTIFIER_CAP));
+    conn.prepare_cached("INSERT INTO unit_fts (rowid, name, words, signature, body) VALUES (?1, ?2, ?3, ?4, ?5)")
+        .map_err(sql)?
+        .execute(params![id, name, words, signature, body])
+        .map_err(sql)?;
+    conn.prepare_cached("INSERT INTO unit_tri (rowid, name, qualified, path) VALUES (?1, ?2, ?3, ?4)")
+        .map_err(sql)?
+        .execute(params![id, name, qualified, path])
+        .map_err(sql)?;
+    Ok(())
+}
+
 fn add_file(
     conn: &Connection,
     corpus_id: i64,
@@ -116,15 +140,7 @@ fn add_file(
         ])
         .map_err(sql)?;
         let id = conn.last_insert_rowid();
-        let words = split_words(&u.qualified).join(" ");
-        conn.prepare_cached("INSERT INTO unit_fts (rowid, name, words, signature, body) VALUES (?1, ?2, ?3, ?4, ?5)")
-            .map_err(sql)?
-            .execute(params![id, u.name, words, u.signature, body])
-            .map_err(sql)?;
-        conn.prepare_cached("INSERT INTO unit_tri (rowid, name, qualified, path) VALUES (?1, ?2, ?3, ?4)")
-            .map_err(sql)?
-            .execute(params![id, u.name, u.qualified, path])
-            .map_err(sql)?;
+        fts_insert(conn, id, &u.name, &u.qualified, &u.signature, &body, path)?;
         added += 1;
     }
     Ok(added)
@@ -166,15 +182,7 @@ fn add_docs(
         ])
         .map_err(sql)?;
         let id = conn.last_insert_rowid();
-        let words = split_words(&u.qualified).join(" ");
-        conn.prepare_cached("INSERT INTO unit_fts (rowid, name, words, signature, body) VALUES (?1, ?2, ?3, ?4, ?5)")
-            .map_err(sql)?
-            .execute(params![id, u.name, words, u.signature, body])
-            .map_err(sql)?;
-        conn.prepare_cached("INSERT INTO unit_tri (rowid, name, qualified, path) VALUES (?1, ?2, ?3, ?4)")
-            .map_err(sql)?
-            .execute(params![id, u.name, u.qualified, path])
-            .map_err(sql)?;
+        fts_insert(conn, id, &u.name, &u.qualified, &u.signature, &body, path)?;
         added += 1;
     }
     Ok(added)

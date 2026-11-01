@@ -20,12 +20,17 @@ const POOL_LEXICAL: usize = 100;
 const POOL_TRIGRAM: usize = 50;
 const POOL_GRAPH: usize = 30;
 const POOL_MEMORY: usize = 20;
+const POOL_RULES: usize = 60;
+const POOL_TEXT_LEXICAL: usize = 40;
+const POOL_TEXT_TRIGRAM: usize = 20;
+const WEIGHT_TEXT: f64 = 1.0;
 const GRAPH_SEEDS: usize = 8;
 const SLOT_POOL: usize = 10;
 const SLOT_FUSED: usize = 5;
 const TEST_PENALTY: f64 = 0.5;
 const TEXT_PENALTY: f64 = 0.8;
 const WEIGHT_SLOT: f64 = 2.0;
+const WEIGHT_FOREIGN_SLOT: f64 = 0.5;
 const WEIGHT_MEMORY: f64 = 2.0;
 const MEMORY_FUSED: usize = 4;
 const MEMORY_COVERAGE: f64 = 0.3;
@@ -190,13 +195,16 @@ pub fn retrieve_with(
     query: &str,
     extra: Vec<(f64, Vec<Hit>)>,
 ) -> crate::Result<Retrieval> {
-    let lexical = lexical::lexical(conn, corpora, scope, query, POOL_LEXICAL)?;
-    let trigram = lexical::trigram(conn, corpora, scope, query, POOL_TRIGRAM)?;
+    use lexical::Pool;
+    let lexical = lexical::lexical_in(conn, corpora, scope, query, POOL_LEXICAL, Pool::Code)?;
+    let trigram = lexical::trigram_in(conn, corpora, scope, query, POOL_TRIGRAM, Pool::Code)?;
+    let text_lexical = lexical::lexical_in(conn, corpora, scope, query, POOL_TEXT_LEXICAL, Pool::Text)?;
+    let text_trigram = lexical::trigram_in(conn, corpora, scope, query, POOL_TEXT_TRIGRAM, Pool::Text)?;
     let seeds: Vec<Hit> = fuse(vec![lexical.clone(), trigram.clone()]).into_iter().take(GRAPH_SEEDS).collect();
     let graph = lexical::neighbours(conn, corpora, &seeds, POOL_GRAPH)?;
     let memory: Vec<Hit> = lexical::covered(
         conn,
-        lexical::memory_by(conn, scope, query, POOL_MEMORY, Some(false))?,
+        lexical::memory_by(conn, scope, query, POOL_RULES, Some(false))?,
         query,
         MEMORY_COVERAGE,
     )
@@ -213,13 +221,35 @@ pub fn retrieve_with(
     .into_iter()
     .take(NOTES_FUSED)
     .collect();
-    let pool: Vec<Hit> = fuse(vec![lexical.clone(), trigram.clone()]).into_iter().take(SLOT_POOL).collect();
+    let wt = WEIGHT_TEXT;
+    let pool: Vec<Hit> = fuse_weighted(vec![
+        (1.0, lexical.clone()),
+        (1.0, trigram.clone()),
+        (wt, text_lexical.clone()),
+        (wt, text_trigram.clone()),
+    ])
+    .into_iter()
+    .take(SLOT_POOL)
+    .collect();
     let slot_matches = slots::rank(conn, query, &pool, corpora)?;
-    let slot_hits: Vec<Hit> = slots::hits(&slot_matches).into_iter().take(SLOT_FUSED).collect();
+    let mut slot_hits: Vec<Hit> = Vec::new();
+    let mut slot_weak: Vec<Hit> = Vec::new();
+    for (h, m) in slots::hits(&slot_matches).into_iter().zip(slot_matches.iter()) {
+        if m.grounded {
+            slot_hits.push(h);
+        } else {
+            slot_weak.push(h);
+        }
+    }
+    slot_hits.truncate(SLOT_FUSED);
+    slot_weak.truncate(SLOT_FUSED);
     let mut lists = vec![
         (1.0, lexical),
         (1.0, trigram),
+        (wt, text_lexical),
+        (wt, text_trigram),
         (1.0, graph),
+        (WEIGHT_FOREIGN_SLOT, slot_weak),
         (WEIGHT_MEMORY, memory),
         (WEIGHT_DERIVED, derived),
         (WEIGHT_NOTES, notes),

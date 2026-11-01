@@ -51,6 +51,7 @@ pub struct IngestReport {
     pub restored: usize,
     pub anchors: AnchorCheck,
     pub counts: Vec<(String, String, i64)>,
+    pub skipped: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -109,6 +110,14 @@ fn classify(path: &str, role: &str) -> Option<Class> {
     }
     None
 }
+
+fn is_root(path: &str) -> bool {
+    !path.contains('/')
+}
+
+const DOC_MAX_RECORDS: usize = 400;
+const DOC_MAX_BYTES: usize = 128 * 1024;
+const INGEST_FORMAT: &str = "2";
 
 fn rank(class: Class) -> u8 {
     match class {
@@ -221,6 +230,17 @@ fn doc_items(path: &str, text: &str, skip: Option<&Regex>) -> Vec<Item> {
             valid_from: None,
         });
     }
+    out.sort_by_key(|item| item.line);
+    let mut bytes = 0usize;
+    let mut keep = 0usize;
+    for item in &out {
+        bytes += item.text.len();
+        if keep >= DOC_MAX_RECORDS || bytes > DOC_MAX_BYTES {
+            break;
+        }
+        keep += 1;
+    }
+    out.truncate(keep);
     out
 }
 
@@ -543,7 +563,11 @@ fn load_texts(conn: &Connection, repo: &Repo, corpus_id: i64) -> crate::Result<V
 fn decline_files(texts: &[(Class, String, String)]) -> Vec<(String, String)> {
     let mut scan: Vec<(u8, String, String)> = texts
         .iter()
-        .filter(|(class, _, _)| rank(*class) < 5)
+        .filter(|(class, path, _)| match class {
+            Class::Claude | Class::Agents => is_root(path),
+            Class::Skill => true,
+            _ => false,
+        })
         .map(|(class, path, text)| (rank(*class), path.clone(), text.clone()))
         .collect();
     scan.sort_by(|a, b| (a.0, a.1.matches('/').count(), &a.1).cmp(&(b.0, b.1.matches('/').count(), &b.1)));
@@ -570,16 +594,13 @@ pub fn check_declines(store: &Store, key: &str) -> crate::Result<(String, Vec<de
 fn gather(conn: &Connection, repo: &Repo, corpus_id: i64, units: &Units) -> crate::Result<(Vec<Item>, usize)> {
     let texts = load_texts(conn, repo, corpus_id)?;
     let laws = Regex::new(r"(?i)\blaws?\b").expect("laws pattern");
-    let notice = Regex::new(r"(?i)keeping|convention|current|trademark").expect("notice pattern");
     let mut items: Vec<Item> = Vec::new();
     for (class, path, text) in &texts {
         match class {
-            Class::Claude | Class::Agents => items.extend(rule_items(path, text, "owner", None, false)),
+            Class::Claude | Class::Agents if is_root(path) => items.extend(rule_items(path, text, "owner", None, false)),
+            Class::Claude | Class::Agents => items.extend(doc_items(path, text, None)),
             Class::Skill => items.extend(rule_items(path, text, "owner", Some(&laws), true)),
-            Class::Notice => {
-                items.extend(rule_items(path, text, "owner", Some(&notice), false));
-                items.extend(doc_items(path, text, Some(&notice)));
-            }
+            Class::Notice => items.extend(doc_items(path, text, None)),
             Class::Doc => items.extend(doc_items(path, text, None)),
             Class::Hashout => items.extend(hashout_items(path, text, units)),
             Class::Build => items.extend(build_items(path, text)),
@@ -607,6 +628,66 @@ fn gather(conn: &Connection, repo: &Repo, corpus_id: i64, units: &Units) -> crat
     Ok((items, texts.len()))
 }
 
+fn fingerprint(conn: &Connection, corpus_id: i64) -> crate::Result<String> {
+    let mut text = String::new();
+    text.push_str(crate::VERSION);
+    text.push('\n');
+    text.push_str(INGEST_FORMAT);
+    text.push('\n');
+    match std::fs::read(declines::override_path()) {
+        Ok(bytes) => text.push_str(&super::digest(&[&String::from_utf8_lossy(&bytes)])),
+        Err(_) => text.push_str("built-in"),
+    }
+    text.push('\n');
+    {
+        let mut stmt = conn
+            .prepare("SELECT path, oid, role FROM file WHERE corpus_id = ?1 ORDER BY path")
+            .map_err(sql)?;
+        let rows = stmt
+            .query_map(params![corpus_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+            })
+            .map_err(sql)?;
+        for row in rows {
+            let (path, oid, role) = row.map_err(sql)?;
+            if classify(&path, &role).is_some() {
+                text.push_str(&format!("{path}\t{oid}\t{role}\n"));
+            }
+        }
+    }
+    {
+        let mut stmt = conn
+            .prepare("SELECT path FROM scan_finding WHERE corpus_id = ?1 ORDER BY path")
+            .map_err(sql)?;
+        let rows = stmt.query_map(params![corpus_id], |r| r.get::<_, String>(0)).map_err(sql)?;
+        for row in rows {
+            text.push_str(&format!("scan\t{}\n", row.map_err(sql)?));
+        }
+    }
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT status, COUNT(*), MAX(id), MAX(updated_at) FROM memory_record \
+                 WHERE corpus_id = ?1 AND authority != 'agent' GROUP BY status ORDER BY status",
+            )
+            .map_err(sql)?;
+        let rows = stmt
+            .query_map(params![corpus_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?))
+            })
+            .map_err(sql)?;
+        for row in rows {
+            let (status, n, max, at) = row.map_err(sql)?;
+            text.push_str(&format!("rec\t{status}\t{n}\t{max}\t{at}\n"));
+        }
+    }
+    Ok(super::digest(&[&text]))
+}
+
+fn meta_key(corpus_id: i64) -> String {
+    format!("memory_ingest:{corpus_id}")
+}
+
 pub fn ingest_with(conn: &Connection, repo: &Repo, corpus_id: i64) -> crate::Result<IngestReport> {
     let (name, format, head): (String, String, Option<String>) = conn
         .query_row(
@@ -615,6 +696,32 @@ pub fn ingest_with(conn: &Connection, repo: &Repo, corpus_id: i64) -> crate::Res
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .map_err(sql)?;
+    let before = fingerprint(conn, corpus_id)?;
+    let stored: Option<String> = conn
+        .query_row("SELECT value FROM meta WHERE key = ?1", params![meta_key(corpus_id)], |r| r.get(0))
+        .optional()
+        .map_err(sql)?;
+    if let Some(value) = &stored {
+        let mut parts = value.splitn(3, '|');
+        if parts.next() == Some(before.as_str()) {
+            let sources = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+            let items = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+            return Ok(IngestReport {
+                corpus: name,
+                commit: head.unwrap_or_default(),
+                sources,
+                items,
+                added: 0,
+                unchanged: items,
+                superseded: 0,
+                stale: 0,
+                restored: 0,
+                anchors: AnchorCheck::default(),
+                counts: counts(conn, Some(corpus_id))?,
+                skipped: true,
+            });
+        }
+    }
     conn.execute_batch("SAVEPOINT memory_ingest").map_err(sql)?;
     let outcome = (|| -> crate::Result<IngestReport> {
         let units = load_units(conn, corpus_id, &format)?;
@@ -623,7 +730,7 @@ pub fn ingest_with(conn: &Connection, repo: &Repo, corpus_id: i64) -> crate::Res
         let now = crate::corpus::now_iso();
         let tally = reconcile(conn, corpus_id, items, &now)?;
         let anchors = check_anchors(conn, corpus_id)?;
-        Ok(IngestReport {
+        let report = IngestReport {
             corpus: name.clone(),
             commit: head.clone().unwrap_or_default(),
             sources,
@@ -635,7 +742,15 @@ pub fn ingest_with(conn: &Connection, repo: &Repo, corpus_id: i64) -> crate::Res
             restored: tally.restored,
             anchors,
             counts: counts(conn, Some(corpus_id))?,
-        })
+            skipped: false,
+        };
+        let after = fingerprint(conn, corpus_id)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+            params![meta_key(corpus_id), format!("{after}|{}|{}", report.sources, report.items)],
+        )
+        .map_err(sql)?;
+        Ok(report)
     })();
     match outcome {
         Ok(report) => {

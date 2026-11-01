@@ -51,7 +51,14 @@ pub fn stem(word: &str) -> String {
     word.to_string()
 }
 
+pub const TERM_CAP: usize = 12;
+pub const LEXICAL_TERM_CAP: usize = 24;
+
 pub fn query_terms(query: &str) -> Vec<String> {
+    query_terms_cap(query, TERM_CAP)
+}
+
+pub fn query_terms_cap(query: &str, cap: usize) -> Vec<String> {
     let mut seen: Vec<String> = Vec::new();
     for word in split_words(query) {
         if word.chars().count() < 2 || STOP.contains(&word.as_str()) {
@@ -60,11 +67,61 @@ pub fn query_terms(query: &str) -> Vec<String> {
         if !seen.contains(&word) {
             seen.push(word);
         }
-        if seen.len() >= 12 {
+        if seen.len() >= cap {
             break;
         }
     }
     seen
+}
+
+pub fn identifier_words(text: &str, cap: usize) -> String {
+    let mut out = String::new();
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut start: Option<usize> = None;
+    let bytes_end = text.len();
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    for (i, c) in text.char_indices() {
+        if c.is_alphanumeric() {
+            if start.is_none() {
+                start = Some(i);
+            }
+        } else if let Some(s) = start.take() {
+            spans.push((s, i));
+        }
+    }
+    if let Some(s) = start {
+        spans.push((s, bytes_end));
+    }
+    for (s, e) in spans {
+        let run = &text[s..e];
+        if run.len() < 5 || !seen.insert(run) {
+            continue;
+        }
+        let parts = split_words(run);
+        if parts.len() < 2 {
+            continue;
+        }
+        if out.len() + run.len() > cap {
+            break;
+        }
+        for p in parts {
+            out.push_str(&p);
+            out.push(' ');
+        }
+    }
+    out
+}
+
+pub fn path_words(path: &str) -> String {
+    let mut out = String::new();
+    for segment in path.split('/') {
+        let stem = segment.rsplit_once('.').map(|(a, _)| a).filter(|a| !a.is_empty()).unwrap_or(segment);
+        for w in split_words(stem) {
+            out.push_str(&w);
+            out.push(' ');
+        }
+    }
+    out
 }
 
 pub fn fts_or(terms: &[String]) -> Option<String> {

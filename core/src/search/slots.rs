@@ -9,6 +9,7 @@ use crate::slots::storage;
 
 const K1: f64 = 1.2;
 const B: f64 = 0.75;
+const FOREIGN_SLOT_COVERAGE: f64 = 0.6;
 const STYLE_KINDS: [&str; 4] = ["selector", "element_id", "style", "custom_property"];
 
 #[derive(Debug, Clone)]
@@ -21,6 +22,7 @@ pub struct Match {
     pub files: Vec<(String, i64)>,
     pub score: f64,
     pub text_score: f64,
+    pub grounded: bool,
     pub why: String,
 }
 
@@ -82,6 +84,7 @@ fn docs(conn: &Connection) -> crate::Result<Vec<Doc>> {
                 files,
                 score: 0.0,
                 text_score: 0.0,
+                grounded: false,
                 why: String::new(),
             },
             tf,
@@ -104,6 +107,14 @@ pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -
     let n = docs.len() as f64;
     let avg = docs.iter().map(|d| d.len).sum::<f64>() / n;
     let mut text: Vec<(usize, f64)> = Vec::new();
+    let mut coverage = vec![0.0f64; docs.len()];
+    let mut whole = 0.0f64;
+    for t in &terms {
+        let df = docs.iter().filter(|o| o.tf.contains_key(t)).count() as f64;
+        if df > 0.0 {
+            whole += (1.0 + (n - df + 0.5) / (df + 0.5)).ln();
+        }
+    }
     for (i, d) in docs.iter().enumerate() {
         let mut score = 0.0;
         for t in &terms {
@@ -113,6 +124,7 @@ pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -
                 continue;
             }
             let idf = (1.0 + (n - df + 0.5) / (df + 0.5)).ln();
+            coverage[i] += idf / whole;
             score += idf * tf * (K1 + 1.0) / (tf + K1 * (1.0 - B + B * d.len / avg));
         }
         if score > 0.0 {
@@ -137,6 +149,14 @@ pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -
     }
     files.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| docs[a.0].m.id.cmp(&docs[b.0].m.id)));
     let text_scores: HashMap<usize, f64> = text.iter().cloned().collect();
+    let need = FOREIGN_SLOT_COVERAGE;
+    let evidence: Vec<bool> = (0..docs.len())
+        .map(|i| {
+            let origin = &docs[i].m.origin_repo;
+            let native = origin.is_empty() || corpora.iter().any(|c| c.name == *origin);
+            native || coverage[i] >= need || files.iter().any(|(j, _)| *j == i)
+        })
+        .collect();
     let mut fused: HashMap<usize, (f64, Vec<String>)> = HashMap::new();
     for (r, (i, _)) in text.iter().enumerate() {
         let e = fused.entry(*i).or_insert((0.0, Vec::new()));
@@ -154,6 +174,7 @@ pub fn rank(conn: &Connection, query: &str, units: &[Hit], corpora: &[Target]) -
             let mut m = docs[i].m.clone();
             m.score = score;
             m.text_score = text_scores.get(&i).copied().unwrap_or(0.0);
+            m.grounded = evidence[i];
             m.why = why.join(", ");
             m
         })
