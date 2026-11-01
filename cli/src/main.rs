@@ -55,6 +55,7 @@ const HELP: &str = "formslot: the Form family's context service
   map <corpus> [--tokens N] [--formmap]   the ranked repo map, or FORMMAP.md under 150 lines
   pack <task> [--corpus C] [--tokens N] [--tier T1|T4|T16] [--json]   a P0/P1/P2 context pack
   eval [--gold F] [--corpus C] [--arm formslot|baseline|dense|all] [--k 1,4,10] [--half all|tuning|held-out] [--json] [--out F]   recall, MRR, nDCG, tokens and latency over a gold set
+  eval --arm model [--sample N] [--model M] [--runs R] [--seed S] [--jobs J] [--max-cost USD] [--out F]   the only arm that calls a model: claude -p with and without the pack, pass rate, tokens, cost (uses your Claude Code login)
   mcp        serve MCP over stdio (newline-delimited JSON-RPC) for an agent's .mcp.json
   check [--mode warn|deny|off]      PreToolUse hook: reads the hook JSON on stdin, answers declines and reuse
   hook <event>                      Claude Code hook: SessionStart, UserPromptSubmit, PostToolUse, PreCompact, SubagentStart, Stop

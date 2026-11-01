@@ -11,6 +11,7 @@ pub mod dedup;
 pub mod dense;
 pub mod discovery;
 pub mod eval;
+pub mod eval_model;
 pub mod facts;
 pub mod family;
 pub mod git;
