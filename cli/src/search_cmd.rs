@@ -55,7 +55,7 @@ fn number(args: &[String], name: &str) -> Result<Option<usize>, String> {
 pub fn run(args: &[String]) -> ExitCode {
     let valued = ["--corpus", "--limit"];
     let given = positionals(args, &valued);
-    if given.first().map(String::as_str) == Some("rebuild") {
+    if given.len() == 1 && given[0] == "rebuild" {
         return rebuild(args);
     }
     if given.is_empty() {

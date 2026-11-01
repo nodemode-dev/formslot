@@ -101,6 +101,8 @@ pub struct NewRecord {
 
 pub fn insert(conn: &Connection, new: &NewRecord, now: &str) -> crate::Result<i64> {
     let hash = content_hash(&new.kind, &new.authority, new.anchor.as_deref(), &new.title, &new.text);
+    let title = crate::redact::text(&new.title).0;
+    let text = crate::redact::text(&new.text).0;
     conn.execute(
         "INSERT INTO memory_record (kind, authority, status, title, text, anchor, corpus_id, source, triggers, \
          content_hash, valid_from, created_at, updated_at) \
@@ -109,8 +111,8 @@ pub fn insert(conn: &Connection, new: &NewRecord, now: &str) -> crate::Result<i6
             new.kind,
             new.authority,
             new.status,
-            new.title,
-            new.text,
+            title,
+            text,
             new.anchor,
             new.corpus_id,
             new.source,

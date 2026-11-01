@@ -300,7 +300,7 @@ pub fn formmap(conn: &Connection, target: &Target, budget: usize) -> crate::Resu
     if !rules.is_empty() {
         head.push_str("\n## Owner rules\n");
         for r in rules.iter().take(12) {
-            head.push_str(&format!("- {}\n", one_line(&r.title, 140)));
+            head.push_str(&format!("- {}\n", crate::redact::text(&one_line(&r.title, 140)).0));
         }
     }
     let cards = slots::all(conn)?;

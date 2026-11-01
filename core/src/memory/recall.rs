@@ -8,6 +8,7 @@ use super::{Filter, Record, estimate_tokens, list, sql, words};
 pub const ANCHOR_BUDGET: usize = 2000;
 const RESERVE_CHARS: usize = 220;
 const FLOOR: usize = 200;
+const RECALL_LIMIT_MAX: usize = 50;
 const STOP: [&str; 20] = [
     "the", "a", "an", "of", "to", "for", "and", "or", "in", "on", "is", "it", "with", "at", "by", "how", "do", "i",
     "we", "be",
@@ -185,6 +186,9 @@ pub fn recall(conn: &Connection, query: &Query) -> crate::Result<Recalled> {
     let joined = all.join(" ");
     let mut scored: Vec<(f64, Record)> = Vec::new();
     for record in records {
+        if record.status == "proposed" {
+            continue;
+        }
         let score = if query.text.trim().is_empty() {
             1.0
         } else {
@@ -212,7 +216,7 @@ pub fn recall(conn: &Connection, query: &Query) -> crate::Result<Recalled> {
     }
     let mut hits: Vec<Hit> = scored
         .into_iter()
-        .take(query.limit)
+        .take(query.limit.clamp(1, RECALL_LIMIT_MAX))
         .map(|(score, r)| Hit {
             id: r.id,
             kind: r.kind,
@@ -233,16 +237,13 @@ pub fn recall(conn: &Connection, query: &Query) -> crate::Result<Recalled> {
     let mut omitted = 0usize;
     if let Some(tokens) = budget {
         let max_chars = (tokens * 4).saturating_sub(RESERVE_CHARS);
-        let cost = |hits: &[Hit], caps: &[Option<usize>]| -> usize {
-            hits.iter()
-                .enumerate()
-                .map(|(i, hit)| {
-                    head(i + 1, hit).chars().count() + body(&shown_text(hit, caps[i])).chars().count()
-                })
-                .sum()
+        let one =|hit: &Hit, i: usize, cap: Option<usize>| -> usize {
+            head(i + 1, hit).chars().count() + body(&shown_text(hit, cap)).chars().count()
         };
+        let mut costs: Vec<usize> = hits.iter().enumerate().map(|(i, h)| one(h, i, caps[i])).collect();
         loop {
-            let total = cost(&hits, &caps);
+            costs.truncate(hits.len());
+            let total: usize = costs.iter().sum();
             if total <= max_chars {
                 break;
             }
@@ -265,8 +266,10 @@ pub fn recall(conn: &Connection, query: &Query) -> crate::Result<Recalled> {
             }
             let second = order.get(1).map(|i| effective(*i, &caps)).unwrap_or(FLOOR);
             let target = second.max(FLOOR).max(current.saturating_sub(excess + 8));
-            let target = if target >= current { current - 1 } else { target };
+            let step = (excess / hits.len().max(1)).max(16);
+            let target = if target >= current { current.saturating_sub(step) } else { target };
             caps[longest] = Some(target.max(FLOOR));
+            costs[longest] = one(&hits[longest], longest, caps[longest]);
         }
     }
     let mut rendered = String::new();

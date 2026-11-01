@@ -186,7 +186,19 @@ pub fn ensure(conn: &Connection, corpus_id: i64, format: &str, path: &str) -> cr
     if indexed(conn, corpus_id)? {
         return Ok(None);
     }
-    let repo = Repo::open(std::path::Path::new(path))?;
+    let has_units: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM file f JOIN unit u ON u.object_format = ?2 AND u.oid = f.oid WHERE f.corpus_id = ?1)",
+            params![corpus_id, format],
+            |r| r.get(0),
+        )
+        .map_err(sql)?;
+    if !has_units {
+        return Ok(None);
+    }
+    let Ok(repo) = Repo::open(std::path::Path::new(path)) else {
+        return Ok(None);
+    };
     let tx = conn.unchecked_transaction().map_err(sql)?;
     let stats = sync(&tx, corpus_id, format, &repo)?;
     tx.commit().map_err(sql)?;

@@ -121,7 +121,7 @@ pub fn copy_verdict(spdx: &str) -> &'static str {
     if OK.contains(&id) {
         return "allowed";
     }
-    if id.starts_with("CC-BY-") && !id.contains("NC") && !id.contains("ND") {
+    if id.starts_with("CC-BY-") && !id.contains("NC") && !id.contains("ND") && !id.contains("SA") {
         return "notice";
     }
     if id == "MPL-2.0" || id.starts_with("LGPL") {
@@ -211,11 +211,7 @@ fn build_p0(conn: &Connection, target: &Target) -> crate::Result<(Part, Vec<i64>
     let mut shown = 0usize;
     let mut shown_ids: Vec<i64> = Vec::new();
     for r in &rules {
-        let line = if r.text.starts_with(&r.title) {
-            format!("- [rule {}] {}\n", r.id, one_line(&r.text, 300))
-        } else {
-            format!("- [rule {}] {}: {}\n", r.id, one_line(&r.title, 120), one_line(&r.text, 300))
-        };
+        let line = format!("- [rule {}] {}\n", r.id, clean(&title_and_text(&r.title, &r.text, 120, 300)));
         let cost = tokens::prose_text(&line);
         if spent + cost > P0_RULES_TOKENS {
             break;
@@ -317,14 +313,27 @@ fn memory_line(conn: &Connection, id: i64) -> Option<String> {
             let status: String = r.get(1)?;
             let title: String = r.get(2)?;
             let text: String = r.get(3)?;
-            Ok(if text.starts_with(&title) {
-                format!("- [{kind} {id} · {status}] {}\n", one_line(&text, 300))
-            } else {
-                format!("- [{kind} {id} · {status}] {}: {}\n", one_line(&title, 100), one_line(&text, 240))
-            })
+            Ok(format!("- [{kind} {id} · {status}] {}\n", clean(&title_and_text(&title, &text, 100, 240))))
         },
     )
     .ok()
+}
+
+pub(crate) fn clean(text: &str) -> String {
+    crate::redact::text(text).0
+}
+
+pub(crate) fn title_and_text(title: &str, text: &str, title_max: usize, text_max: usize) -> String {
+    if text.starts_with(title) {
+        return one_line(text, text_max);
+    }
+    for (at, _) in title.match_indices(": ") {
+        let tail = title[at + 2..].trim_end_matches(['.', ' ']);
+        if !tail.is_empty() && text.starts_with(tail) {
+            return format!("{}: {}", one_line(&title[..at], title_max), one_line(text, text_max));
+        }
+    }
+    format!("{}: {}", one_line(title, title_max), one_line(text, text_max))
 }
 
 fn slot_card(m: &slots::Match) -> String {
@@ -334,14 +343,14 @@ fn slot_card(m: &slots::Match) -> String {
         .take(4)
         .map(|(p, l)| if *l > 0 { format!("{p} ({l} lines)") } else { p.clone() })
         .collect();
-    format!(
+    clean(&format!(
         "slot {} · {} · {}\n  {}\n  files: {}\n",
         m.id,
         m.status,
         one_line(&m.title, 80),
         one_line(&m.summary, 220),
         files.join(", ")
-    )
+    ))
 }
 
 pub fn build(
@@ -354,6 +363,7 @@ pub fn build(
     let found = super::retrieve(conn, std::slice::from_ref(target), Some(target.id), task)?;
     let (p0, rule_ids) = build_p0(conn, target)?;
     let p0_tokens = p0.tokens();
+    let tier = if tier.with_prefix() && p0_tokens * 2 > budget { Tier::T1 } else { tier };
     let p0_sent = if tier.with_prefix() { p0_tokens } else { 0 };
 
     let mut p1 = Part::default();
@@ -393,7 +403,8 @@ pub fn build(
 
     let mut p2 = Part::default();
     p2.push("## P2 task\n", Kind::Prose);
-    p2.push(&format!("task: {}\n", one_line(task, 300)), Kind::Prose);
+    let task_chars = (budget.saturating_sub(p0_sent + p1_sent + 8) * 4).clamp(16, 300);
+    p2.push(&format!("task: {}\n", clean(&one_line(task, task_chars))), Kind::Prose);
     if !tier.with_prefix() && !found.slots.is_empty() {
         let ids: Vec<&str> = found.slots.iter().take(tier.slot_cards()).map(|m| m.id.as_str()).collect();
         p2.push(&format!("slots: {}\n", ids.join(", ")), Kind::Prose);
@@ -449,7 +460,7 @@ pub fn build(
         let mut keep = all_lines.len().min(tier.excerpt_lines());
         let mut placed = false;
         while keep >= 6 || (keep > 0 && keep == all_lines.len()) {
-            let text = all_lines[..keep].join("\n");
+            let text = clean(&all_lines[..keep].join("\n"));
             let last = u.start_line + keep as i64 - 1;
             let ex = envelope(target, &h.path, [u.start_line, last], slot_of(&h.path), &u.licence, text);
             let mut line = serde_json::to_string(&ex).map_err(|e| format!("pack: {e}"))?;
