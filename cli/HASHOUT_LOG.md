@@ -2,7 +2,7 @@
 
 Living log for `formslot-cli`. Source files stay comment-free; what they would have said lives here.
 
-Current build version: v0.2.0
+Current build version: v0.2.1
 Last updated: 2026-10-30 · Phases S1 and S2
 
 ## Org-navi-map
@@ -65,7 +65,7 @@ Prints the version and contract, the data folder, the configured port, whether `
 - kind: explainer
 - logged: v0.2.0 · 2026-10-30
 
-Each command opens the store at `config::corpus_db()` directly and calls the `corpus` or `family` function of the same name, so the command line works with or without a running service; the service and the command line share the same SQLite file under WAL. `add` and `reindex` print one line: name, the first 12 characters of the head, and the IndexRun counters. `stats` prints a language table, the role counts, the licences and the secret finding count, or the raw Stats with `--json`. `files` prints one path per line. `family --family-json <path>` writes the family table from formMCP's generated list and `--check` exits 1 when the table differs from the file. The first positional argument that is not an option value is the path or corpus name.
+Each command opens the store at `config::corpus_db()` directly and calls the `corpus` or `family` function of the same name, so the command line works with or without a running service; the service and the command line share the same SQLite file under WAL. `add` and `reindex` print one line: name, the first 12 characters of the head, and the IndexRun counters. `stats` prints a language table, the role counts, the licences and the secret finding count, or the raw Stats with `--json`. `files` prints one path per line. `family --family-json <path>` writes the family table from formMCP's generated list and `--check` exits 1 when the table differs from the file. The first positional argument that is not an option value is the path or corpus name. An option given without its value (`--ref`, `--role`, `--language`, `--family-json` last, or followed by another option) is an error that names the option, rather than falling back to a default (v0.2.1, found in review).
 
 ### corpus_cmd.rs · verification
 - refers-to: cli/src/corpus_cmd.rs :: add, stats

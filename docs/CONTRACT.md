@@ -47,6 +47,7 @@ A client reads it, checks that `pid` is alive, and sends `Authorization: Bearer 
 
 - Listens on 127.0.0.1 only. Never another address.
 - Every request needs `Authorization: Bearer <token>` (401 otherwise), a `Host` of `127.0.0.1:<port>` or `localhost:<port>` (421 otherwise), and, when an `Origin` header is present, an origin of `http://127.0.0.1:<port>` or `http://localhost:<port>` (403 otherwise). Clients are processes (subform's engine, hooks, the command line, formMCP), never page script: the token stays out of any page's JavaScript.
+- A request target must start with `/`. Host, Origin, Authorization, Content-Length and Transfer-Encoding may each appear once; a second copy is 400. Chunked bodies are 400.
 - Bodies are JSON, UTF-8, at most 1 MiB in. Errors are `{"error": "<code>", "message": "<sentence>"}`.
 - The token, request bodies and query strings are never written to the log.
 
@@ -54,7 +55,7 @@ A client reads it, checks that `pid` is alive, and sends `Authorization: Bearer 
 | --- | --- | --- | --- |
 | `GET /api/health` | v0.1.0 | none | `{"ok": true, "version": "0.2.0", "contract": 1}` |
 | `GET /api/corpus` | v0.2.0 | none | `{"corpora": [Corpus]}` |
-| `POST /api/corpus` | v0.2.0 | `{"path": "/abs/path", "ref": "HEAD"}` | `{"corpus": Corpus, "index": IndexRun}`; indexes before answering |
+| `POST /api/corpus` | v0.2.0 | `{"path": "/abs/path", "ref": "HEAD"}` | `{"corpus": Corpus, "index": IndexRun}`; indexes before answering; a path that is not absolute is 400 |
 | `POST /api/corpus/<id>/reindex` | v0.2.0 | `{"ref": "HEAD"}` | `{"corpus": Corpus, "index": IndexRun}`; only blobs not seen before are read |
 | `GET /api/corpus/<id>/stats` | v0.2.0 | none | `Stats` |
 
@@ -92,3 +93,4 @@ These land in later phases; names and shapes are fixed here and change only with
 ## Revisions
 
 - 1 · 2026-10-30 · first version, written in Phase S1
+- 1 · 2026-10-30 · v0.2.1, compatible tightening after review: duplicate checked headers, targets without a leading slash and relative corpus paths are 400; `Corpus.remote` never carries credentials

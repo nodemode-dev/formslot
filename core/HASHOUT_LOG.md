@@ -2,8 +2,8 @@
 
 Living log for `formslot-core`. Source files stay comment-free; what they would have said lives here.
 
-Current build version: v0.2.0
-Last updated: 2026-10-30 · Phases S1 and S2
+Current build version: v0.2.1
+Last updated: 2026-10-30 · Phases S1 and S2, review fixes
 
 ## Org-navi-map
 
@@ -133,7 +133,14 @@ Order: Host (421), Origin when present (403), bearer token (401), then the route
 - kind: warning-context
 - logged: v0.2.0 · 2026-10-30
 
-Bodies are at most 1 MiB (413 above that) and header lines together at most 64 KiB. Chunked bodies are refused with 400: every client sends a Content-Length. Errors are always `{"error","message"}`.
+Bodies are at most 1 MiB (413 above that) and header lines together at most 64 KiB. Each line is read through a `take` of the room left, so a single line without a newline cannot grow past the limit before it is refused (v0.2.1; before that `read_line` buffered the whole line first). Chunked bodies are refused with 400: every client sends a Content-Length. A request target that does not start with `/` is 400. Host, Origin, Authorization, Content-Length and Transfer-Encoding may each appear once; a second copy is 400, so a request cannot pass with a forged first Host and a good last one (v0.2.1). Errors are always `{"error","message"}`.
+
+### http.rs · connections
+- refers-to: core/src/http.rs :: start
+- kind: todo
+- logged: v0.2.1 · 2026-10-30
+
+One thread per connection with a 30 s read timeout that restarts on every read and no cap on connections. Any local program can hold many slow connections open. A connection cap and a total per-request deadline are planned for the phase that exposes `/mcp` (S8), when clients other than the command line and subform's engine start connecting.
 
 ### http.rs · what is logged
 - refers-to: core/src/http.rs :: refuse
@@ -149,7 +156,7 @@ A refusal logs the reason word and the status only. The token, the body and the 
 - kind: explainer
 - logged: v0.2.0 · 2026-10-30
 
-One match on the method and the path split into segments, so `/api/corpus/<id>/stats` binds the id without a router. Routes: `GET /api/health`, `GET /api/corpus`, `POST /api/corpus` (body `path`, optional `ref`), `POST /api/corpus/<id>/reindex`, `GET /api/corpus/<id>/stats`; everything else 404. The id segment is a corpus name or its number, passed straight to `corpus`. A missing or non-JSON body on a POST is 400; an engine error is 422 with the engine's sentence. Each request opens the store itself (a rusqlite connection is not Sync, and WAL lets readers run beside a writer); index runs take the `INDEXING` mutex so two runs never hold write transactions at once. Indexing answers only after the run, which takes about 2.6 s for formvis in a release build.
+One match on the method and the path split into segments, so `/api/corpus/<id>/stats` binds the id without a router. Routes: `GET /api/health`, `GET /api/corpus`, `POST /api/corpus` (body `path`, optional `ref`), `POST /api/corpus/<id>/reindex`, `GET /api/corpus/<id>/stats`; everything else 404. The id segment is a corpus name or its number, passed straight to `corpus`. A missing or non-JSON body on a POST is 400, and so is a `path` that is not absolute (a relative one would resolve against the service's working folder; v0.2.1); an engine error is 422 with the engine's sentence. Not done yet (review, low): an unknown corpus is 422 rather than 404, and a known path with the wrong method is 404 rather than 405; both wait for the contract revision that S8 brings. Each request opens the store itself (a rusqlite connection is not Sync, and WAL lets readers run beside a writer); index runs take the `INDEXING` mutex so two runs never hold write transactions at once. Indexing answers only after the run, which takes about 2.6 s for formvis in a release build.
 
 ## log.rs
 
@@ -194,7 +201,7 @@ Removal of `service.json` when the service stops cannot be done on SIGTERM or Ct
 - kind: rationale
 - logged: v0.2.0 · 2026-10-30
 
-Every git read goes through the system git CLI with std::process::Command: no git library is linked, so the git licence (GPL-2.0 only) never reaches the formslot binary, and what an agent sees from git is exactly what formslot indexes. Each call sets GIT_TERMINAL_PROMPT=0, LC_ALL=C and GIT_OPTIONAL_LOCKS=0 and passes the repository with -C. Revisions that came from outside are always passed after --end-of-options and peeled with ^{commit}, so a revision name can never be read as an option. Nothing writes to the repository. A folder that is not a git repository (substrata v2.11.1 as uploaded has no `.git`) is refused with git's own message; formslot indexes commits, not loose folders.
+Every git read goes through the system git CLI with std::process::Command: no git library is linked, so the git licence (GPL-2.0 only) never reaches the formslot binary, and what an agent sees from git is exactly what formslot indexes. Each call sets GIT_TERMINAL_PROMPT=0, LC_ALL=C and GIT_OPTIONAL_LOCKS=0 and passes the repository with -C. Revisions that came from outside are always passed after --end-of-options and peeled with ^{commit}, so a revision name can never be read as an option. Nothing writes to the repository. `remote_url` passes the origin URL through `without_credentials`, which drops any `user:password@` part of a `scheme://` URL before it is stored or returned, so a token embedded in a remote never reaches the database or an API answer (v0.2.1, found in review); scp-style `git@host:path` remotes have no credentials and are kept as they are. A folder that is not a git repository (substrata v2.11.1 as uploaded has no `.git`) is refused with git's own message; formslot indexes commits, not loose folders.
 
 ### core/src/git.rs · Repo::ls_tree
 - refers-to: core/src/git.rs :: Repo::ls_tree
@@ -295,7 +302,7 @@ Optional and not part of the index run. When a gitleaks binary is in FORMSLOT_BI
 - kind: rationale
 - logged: v0.2.0 · 2026-10-30
 
-Order of evidence for one file: an SPDX-License-Identifier header in its first 30 lines, then the nearest LICENSE, LICENCE or COPYING file walking up the tree (matched against a small table by its first 3000 characters), then the nearest package.json, Cargo.toml or pyproject.toml license field, else "unknown" with source `unknown`. The sources are recorded as header, licence_file, manifest and unknown. Consequence of that order: a package.json that declares ISC inside a tree whose root LICENSE is MIT is itself reported as MIT, because the licence file wins over the manifest. Unknown means no copy; the verdict mapping is a later phase.
+Order of evidence for one file: an SPDX-License-Identifier header in its first 30 lines (a line that is only a comment marker, the tag and an SPDX-shaped expression, so code that merely contains the words, such as this module's own regex, is not read as a header; v0.2.1), then the nearest LICENSE, LICENCE or COPYING file walking up the tree (matched against a small table by its first 3000 characters), then the nearest package.json, Cargo.toml or pyproject.toml license field, else "unknown" with source `unknown`. The sources are recorded as header, licence_file, manifest and unknown. Consequence of that order: a package.json that declares ISC inside a tree whose root LICENSE is MIT is itself reported as MIT, because the licence file wins over the manifest. Unknown means no copy; the verdict mapping is a later phase.
 
 ### core/src/licence.rs · licence_text_spdx
 - refers-to: core/src/licence.rs :: licence_text_spdx
@@ -304,6 +311,13 @@ Order of evidence for one file: an SPDX-License-Identifier header in its first 3
 
 Matching is a table of lowercase phrases that must all appear in the first 3000 characters after whitespace is collapsed. Order matters: AGPL, then LGPL 3 and 2.1, then GPL 3 and 2, then Apache, MPL, BSD-3 before BSD-2, MIT, ISC, Unlicense, CC0. It names the family and the version, nothing more: a licence file with extra clauses or an exception (for example GPL with a linking exception) is reported as the plain licence. The result is stored on the blob, so a blob first seen under a name that is not a licence or manifest file never gets a document licence, even if the same bytes are later seen as LICENSE.
 
+### licence.rs · licence cached per blob
+- refers-to: core/src/corpus.rs :: store_blob; core/src/licence.rs :: Index::resolve
+- kind: todo
+- logged: v0.2.1 · 2026-10-30
+
+Found in review and left for S5, when slots first depend on licences: `spdx_doc` is computed with the path of whichever file read the blob first, while the blob row is keyed by object id only. Identical bytes at a path with a different licence-file or manifest role can get a stale document licence. The fix is to keep both interpretations (as a licence file and as a manifest) on the blob, or to resolve them per path in the licence rebuild.
+
 ## corpus.rs
 
 ### core/src/corpus.rs · index
@@ -311,7 +325,7 @@ Matching is a table of lowercase phrases that must all appear in the first 3000 
 - kind: explainer
 - logged: v0.2.0 · 2026-10-30
 
-One index run is one transaction. Order, after B08: resolve the revision, list the tree (ls-tree), decide which paths to touch (all of them, or only the diff-tree paths when the corpus already has a head of the same object format and the diff succeeds), then for each touched path: skip it if its role says not to read it, reuse it if the blob is already known, otherwise read it through the BlobReader, sniff binary, count lines, hash it, scan text for secrets, read any SPDX header and any licence or manifest content, and store the blob. Untouched paths are counted as reused or skipped without a database lookup, so a repeat run at the same commit reports read 0. Afterwards removed paths are deleted, every row's commit is set to the new head, roles are recomputed from path, tree and blob (so a mirror becomes a mirror when `.claude/skills` first appears), and the licence and scan_finding tables are rebuilt for the corpus. Counters: listed is the whole tree, read is blobs pulled from git, reused is files whose blob was already stored, skipped is files not read (generated, mirror, binary by extension, over 32 MiB, or missing), secrets is findings in newly read blobs.
+One index run is one transaction. Order, after B08: resolve the revision, list the tree (ls-tree), decide which paths to touch (all of them, or only the diff-tree paths when the corpus already has a head of the same object format and the diff succeeds), then for each touched path: skip it if its role says not to read it, reuse it if the blob is already known, otherwise read it through the BlobReader, sniff binary, count lines, hash it, scan text for secrets, read any SPDX header and any licence or manifest content, and store the blob. An untouched path that is skipped by its role is counted as skipped; any other untouched path is looked up in `blob` and counted as reused only when its blob is stored, otherwise it is read now. That lookup matters when a file's skip status flips without the file changing (for example `.agents/skills` stops being a mirror when `.claude/skills` is deleted): before v0.2.1 such files were counted as reused and never read. A repeat run at the same commit still reports read 0. The run opens its transaction with BEGIN IMMEDIATE and re-reads the corpus head and object format inside it before planning, so a command-line run and a service run cannot plan against a stale head or fail with a busy snapshot (v0.2.1). Afterwards removed paths are deleted, every row's commit is set to the new head, roles are recomputed from path, tree and blob (so a mirror becomes a mirror when `.claude/skills` first appears), and the licence and scan_finding tables are rebuilt for the corpus. Counters: listed is the whole tree, read is blobs pulled from git, reused is files whose blob was already stored, skipped is files not read (generated, mirror, binary by extension, over 32 MiB, or missing), secrets is findings in newly read blobs.
 
 ### core/src/corpus.rs · Stats
 - refers-to: core/src/corpus.rs :: Stats
