@@ -14,9 +14,14 @@ const HEADERS_MAX: usize = 64 * 1024;
 const BODY_MAX: usize = 1024 * 1024;
 const MAX_CONNECTIONS: usize = 64;
 const READ_DEADLINE: Duration = Duration::from_secs(15);
+const FIRST_BYTE: Duration = Duration::from_secs(5);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
 static OPEN_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn open_connections() -> usize {
+    OPEN_CONNECTIONS.load(Ordering::SeqCst)
+}
 
 struct Slot;
 
@@ -165,6 +170,12 @@ fn read_line(reader: &mut BufReader<&TcpStream>, used: &mut usize, deadline: Ins
 fn read_request(stream: &TcpStream) -> std::result::Result<Head, Reply> {
     let mut reader = BufReader::new(stream);
     let mut used = 0;
+    arm(&reader, Instant::now() + FIRST_BYTE)?;
+    match reader.fill_buf() {
+        Ok(buffered) if buffered.is_empty() => return Err(bad()),
+        Ok(_) => {}
+        Err(e) => return Err(io_reply(&e)),
+    }
     let deadline = Instant::now() + READ_DEADLINE;
     let first = read_line(&mut reader, &mut used, deadline)?;
     let mut parts = first.split_whitespace();

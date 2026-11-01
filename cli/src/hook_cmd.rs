@@ -15,6 +15,10 @@ fn flag(args: &[String], name: &str) -> bool {
 }
 
 fn stdin_text() -> String {
+    use std::io::IsTerminal;
+    if std::io::stdin().is_terminal() {
+        return String::new();
+    }
     let mut raw = Vec::new();
     let _ = std::io::stdin().lock().take(hook::STDIN_CAP as u64).read_to_end(&mut raw);
     String::from_utf8_lossy(&raw).to_string()

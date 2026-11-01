@@ -241,6 +241,8 @@ pub fn recall(conn: &Connection, query: &Query) -> crate::Result<Recalled> {
                 .then_with(|| a.1.id.cmp(&b.1.id))
         });
     }
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    scored.retain(|(_, r)| seen.insert(super::content_hash(&r.kind, &r.authority, None, &r.title, &r.text)));
     let mut hits: Vec<Hit> = scored
         .into_iter()
         .take(query.limit.clamp(1, RECALL_LIMIT_MAX))

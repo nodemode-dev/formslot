@@ -12,15 +12,14 @@ use serde_json::{Value, json};
 const START_WAIT: Duration = Duration::from_secs(20);
 const STOP_WAIT: Duration = Duration::from_secs(15);
 
-fn call(info: &ServiceInfo, method: &str, path: &str, body: Option<&str>) -> Result<(u16, Value), String> {
-    let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, info.port);
+fn exchange(port: u16, token: Option<&str>, method: &str, path: &str, body: Option<&str>) -> Result<(u16, Value), String> {
+    let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
     let mut stream = TcpStream::connect_timeout(&addr.into(), Duration::from_secs(2)).map_err(|e| e.to_string())?;
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let body = body.unwrap_or("");
+    let auth = token.map(|t| format!("Authorization: Bearer {t}\r\n")).unwrap_or_default();
     let request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        info.port,
-        info.token,
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
     stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
@@ -31,7 +30,19 @@ fn call(info: &ServiceInfo, method: &str, path: &str, body: Option<&str>) -> Res
     Ok((status, serde_json::from_str(text).unwrap_or(Value::Null)))
 }
 
+fn call(info: &ServiceInfo, method: &str, path: &str, body: Option<&str>) -> Result<(u16, Value), String> {
+    exchange(info.port, Some(&info.token), method, path, body)
+}
+
+fn is_formslot(info: &ServiceInfo) -> Result<(), String> {
+    match exchange(info.port, None, "GET", "/api/health", None)? {
+        (401, value) if value.get("error").and_then(Value::as_str) == Some("unauthorized") => Ok(()),
+        _ => Err("the recorded port does not answer like formslot".to_string()),
+    }
+}
+
 fn health(info: &ServiceInfo) -> Result<Value, String> {
+    is_formslot(info)?;
     match call(info, "GET", "/api/health", None)? {
         (200, value) if value.is_object() => Ok(value),
         (200, _) => Err("the health answer was not JSON".to_string()),
@@ -104,8 +115,9 @@ pub fn serve(args: &[String]) -> ExitCode {
         thread::sleep(Duration::from_millis(200));
     };
     server.stop();
+    let drained = lifecycle::drain();
     discovery::remove();
-    log::record("serve-stop", json!({ "reason": reason }));
+    log::record("serve-stop", json!({ "reason": reason, "drained": drained }));
     drop(lock);
     ExitCode::SUCCESS
 }
@@ -167,11 +179,33 @@ pub fn start() -> ExitCode {
 }
 
 pub fn stop() -> ExitCode {
+    match discovery::acquire_lock() {
+        Ok(Some(lock)) => {
+            let had_file = discovery::info_path().exists();
+            discovery::remove();
+            drop(lock);
+            if had_file {
+                println!("formslot is not running (removed a stale discovery file)");
+            } else {
+                println!("formslot is not running");
+            }
+            return ExitCode::SUCCESS;
+        }
+        Ok(None) => {}
+        Err(e) => {
+            if matches!(discovery::read(), Ok(None)) {
+                println!("formslot is not running");
+                return ExitCode::SUCCESS;
+            }
+            eprintln!("formslot: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
     let info = match discovery::read() {
         Ok(Some(info)) => info,
         Ok(None) => {
-            println!("formslot is not running");
-            return ExitCode::SUCCESS;
+            eprintln!("formslot: a service holds the lock but has not written its discovery file yet; try again in a moment");
+            return ExitCode::FAILURE;
         }
         Err(e) => {
             eprintln!("formslot: {e}");
@@ -179,13 +213,23 @@ pub fn stop() -> ExitCode {
         }
     };
     if !discovery::pid_alive(info.pid) {
-        discovery::remove();
-        println!("formslot is not running (removed the stale discovery file of pid {})", info.pid);
-        return ExitCode::SUCCESS;
-    }
-    if let Err(e) = call(&info, "POST", "/api/shutdown", Some("{}")) {
-        eprintln!("formslot: the service did not take the stop request ({e})");
+        eprintln!("formslot: the lock is held, but the discovery file names pid {} which is gone; nothing was sent", info.pid);
         return ExitCode::FAILURE;
+    }
+    if let Err(e) = health(&info) {
+        eprintln!("formslot: the recorded service did not answer a health check ({e}); nothing was sent");
+        return ExitCode::FAILURE;
+    }
+    match call(&info, "POST", "/api/shutdown", Some("{}")) {
+        Ok((202, _)) => {}
+        Ok((status, _)) => {
+            eprintln!("formslot: the service answered the stop request with {status}, not 202");
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("formslot: the service did not take the stop request ({e})");
+            return ExitCode::FAILURE;
+        }
     }
     let began = Instant::now();
     while began.elapsed() < STOP_WAIT {
@@ -217,6 +261,10 @@ pub fn status() -> ExitCode {
     }
     match health(&info) {
         Ok(answer) => {
+            if answer.get("ok").and_then(Value::as_bool) != Some(true) {
+                println!("formslot is not running (the recorded port answered, but not as formslot)");
+                return ExitCode::from(1);
+            }
             let version = answer.get("version").and_then(Value::as_str).unwrap_or("?");
             let contract = answer.get("contract").and_then(Value::as_u64).unwrap_or(0);
             println!(
@@ -277,7 +325,8 @@ fn mode_of(path: &Path) -> Option<u32> {
 fn modes(report: &mut Report, dir: &Path) {
     #[cfg(unix)]
     {
-        let expect: [(PathBuf, u32); 6] = [
+        let expect: [(PathBuf, u32); 7] = [
+            (dir.join("bin"), 0o700),
             (dir.to_path_buf(), 0o700),
             (dir.join("service.json"), 0o600),
             (dir.join("service.lock"), 0o600),
@@ -404,6 +453,9 @@ pub fn doctor(args: &[String]) -> ExitCode {
     match discovery::read() {
         Ok(Some(info)) if discovery::pid_alive(info.pid) => match health(&info) {
             Ok(_) => report.line("service", &format!("running on 127.0.0.1:{} (pid {}), started {}", info.port, info.pid, info.started)),
+            Err(e) if matches!(discovery::acquire_lock(), Ok(Some(_))) => {
+                report.warn("service", &format!("not running; the discovery file is stale (pid {} is reused and port {} is not formslot: {e}); `formslot stop` removes it", info.pid, info.port))
+            }
             Err(e) => report.problem("service", &format!("pid {} is alive but does not answer on port {} ({e})", info.pid, info.port)),
         },
         Ok(Some(info)) => report.warn("service", &format!("not running; the discovery file is stale (pid {} is gone) and the next start removes it", info.pid)),
@@ -416,6 +468,9 @@ pub fn doctor(args: &[String]) -> ExitCode {
     }
     store_version(&mut report);
     for name in ["gitleaks", "rg", "curl"] {
+        if let Some(path) = binres::refused(name) {
+            report.warn(name, &format!("{} is ignored: it or its folder is group or world writable, or not owned by you", path.display()));
+        }
         match binres::find(name) {
             Some(path) => report.line(name, &format!("{} ({})", path.display(), binres::source(name))),
             None => report.line(name, &format!("not found (optional; set {} or put it in {})", binres::env_name(name), dir.join("bin").display())),

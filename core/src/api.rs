@@ -55,7 +55,7 @@ fn lease_post(body: &[u8]) -> Reply {
 }
 
 pub fn route(req: &Request) -> Reply {
-    let probe = req.method == "GET" && req.path.trim_end_matches('/') == "/api/health";
+    let probe = req.method == "GET" && matches!(req.path.trim_end_matches('/'), "/api/health" | "/api/lease");
     let _busy = (!probe).then(lifecycle::busy);
     dispatch(req)
 }

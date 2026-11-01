@@ -26,40 +26,105 @@ pub fn launcher_path() -> String {
 
 fn launcher_word() -> String {
     let path = launcher_path();
-    if path.chars().any(|c| c.is_whitespace() || "\"'$`&|;<>()*?#~!{}[]\\".contains(c)) && path != "formslot" {
-        format!("\"{}\"", path.replace('"', "\\\""))
+    if path != "formslot" && path.chars().any(|c| c.is_whitespace() || "\"'$`&|;<>()*?#~!{}[]\\%^=,".contains(c)) {
+        if cfg!(windows) {
+            format!("\"{path}\"")
+        } else {
+            format!("'{}'", path.replace('\'', "'\\''"))
+        }
     } else {
         path
     }
 }
 
 pub fn program_of(command: &str) -> String {
-    first_word(command).0.to_string()
+    first_word(command).0
 }
 
-fn first_word(command: &str) -> (&str, &str) {
+fn first_word(command: &str) -> (String, &str) {
     let command = command.trim_start();
-    if let Some(rest) = command.strip_prefix('"') {
-        return match rest.find('"') {
-            Some(end) => (&rest[..end], &rest[end + 1..]),
-            None => (rest, ""),
-        };
+    let mut word = String::new();
+    let mut chars = command.char_indices().peekable();
+    let mut end = command.len();
+    while let Some((at, c)) = chars.next() {
+        match c {
+            '\'' if !cfg!(windows) => {
+                for (_, q) in chars.by_ref() {
+                    if q == '\'' {
+                        break;
+                    }
+                    word.push(q);
+                }
+            }
+            '"' => {
+                while let Some((_, q)) = chars.next() {
+                    match q {
+                        '"' => break,
+                        '\\' if !cfg!(windows) => match chars.peek() {
+                            Some((_, n)) if matches!(n, '"' | '\\' | '$' | '`') => {
+                                word.push(*n);
+                                chars.next();
+                            }
+                            _ => word.push('\\'),
+                        },
+                        _ => word.push(q),
+                    }
+                }
+            }
+            '\\' if !cfg!(windows) => {
+                if let Some((_, n)) = chars.next() {
+                    word.push(n);
+                }
+            }
+            c if c.is_whitespace() => {
+                end = at;
+                break;
+            }
+            c => word.push(c),
+        }
     }
-    match command.find(char::is_whitespace) {
-        Some(end) => (&command[..end], &command[end..]),
-        None => (command, ""),
-    }
+    (word, &command[end..])
+}
+
+fn is_our_program(program: &str) -> bool {
+    let name = program.rsplit(['/', '\\']).next().unwrap_or(program).to_ascii_lowercase();
+    let name = name.strip_suffix(".exe").unwrap_or(&name);
+    name == "formslot" || name == "formslot-cli"
 }
 
 pub fn is_ours(command: &str) -> bool {
     let (program, rest) = first_word(command);
-    let name = program.rsplit(['/', '\\']).next().unwrap_or(program).to_ascii_lowercase();
-    let name = name.strip_suffix(".exe").unwrap_or(&name);
-    if name != "formslot" && name != "formslot-cli" {
+    if !is_our_program(&program) {
         return false;
     }
     let sub = rest.split_whitespace().next().unwrap_or("");
     sub == "check" || sub == "hook"
+}
+
+fn ours_stale(command: &str) -> Option<String> {
+    if !is_ours(command) {
+        return None;
+    }
+    let (program, rest) = first_word(command);
+    if program == launcher_path() {
+        return None;
+    }
+    Some(format!("{}{}", launcher_word(), rest))
+}
+
+fn normalise(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| match (k.as_str(), v.as_str()) {
+                    ("command", Some(c)) if is_ours(c) => (k.clone(), Value::String("<ours>".to_string())),
+                    _ => (k.clone(), normalise(v)),
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(normalise).collect()),
+        other => other.clone(),
+    }
 }
 
 fn event_groups(mode: Mode) -> Vec<(&'static str, J)> {
@@ -98,17 +163,19 @@ fn event_groups(mode: Mode) -> Vec<(&'static str, J)> {
     ]
 }
 
-fn has_ours(event_array: &Node) -> bool {
-    event_array.items().iter().any(|group| {
-        group
-            .get("hooks")
-            .map(|hs| {
-                hs.items().iter().any(|h| {
-                    h.get("command").and_then(Node::text).is_some_and(is_ours)
-                })
-            })
-            .unwrap_or(false)
-    })
+fn ours_commands(event_array: &Node) -> Vec<&Node> {
+    event_array
+        .items()
+        .iter()
+        .filter_map(|group| group.get("hooks"))
+        .flat_map(|hs| hs.items().iter())
+        .filter_map(|h| h.get("command"))
+        .filter(|c| c.text().is_some_and(is_ours))
+        .collect()
+}
+
+fn replace_string(node: &Node, text: &str) -> Splice {
+    Splice { start: node.start, end: node.end, text: serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string()) }
 }
 
 pub fn merge_settings(text: &str, mode: Mode, enable: bool) -> crate::Result<(String, Vec<String>)> {
@@ -138,8 +205,20 @@ pub fn merge_settings(text: &str, mode: Mode, enable: bool) -> crate::Result<(St
                         changes.push(format!("hooks.{event}: added"));
                     }
                     Some(a) if a.is_array() => {
-                        if has_ours(a) {
-                            changes.push(format!("hooks.{event}: already has a formslot hook, left as it is"));
+                        let ours = ours_commands(a);
+                        if !ours.is_empty() {
+                            let mut moved = 0;
+                            for node in &ours {
+                                if let Some(fresh) = node.text().and_then(ours_stale) {
+                                    splices.push(replace_string(node, &fresh));
+                                    moved += 1;
+                                }
+                            }
+                            if moved > 0 {
+                                changes.push(format!("hooks.{event}: formslot command path updated to {} ({moved} entries)", launcher_path()));
+                            } else {
+                                changes.push(format!("hooks.{event}: already has a formslot hook, left as it is"));
+                            }
                         } else if let Some(s) = jsonedit::append(text, a, &[(None, group.clone())], &unit) {
                             splices.push(s);
                             changes.push(format!("hooks.{event}: formslot group appended after the existing ones"));
@@ -196,7 +275,7 @@ fn verify(old: &str, new: &str, enable: bool) -> crate::Result<()> {
         let ok = match key.as_str() {
             "hooks" => old_value.as_object().is_some_and(|oh| {
                 oh.iter().all(|(e, v)| match (v.as_array(), new_value.get(e).and_then(Value::as_array)) {
-                    (Some(x), Some(y)) => y.len() >= x.len() && y[..x.len()] == x[..],
+                    (Some(x), Some(y)) => y.len() >= x.len() && y[..x.len()].iter().zip(x.iter()).all(|(p, q)| normalise(p) == normalise(q)),
                     _ => false,
                 })
             }),
@@ -241,8 +320,17 @@ pub fn merge_mcp(text: Option<&str>) -> crate::Result<(String, String)> {
             note = "mcpServers added with the formslot server";
         }
         Some(m) if m.is_object() => {
-            if m.get(SERVER).is_some() {
-                note = "formslot server already defined, left as it is";
+            if let Some(existing) = m.get(SERVER) {
+                let command = existing.get("command");
+                let ours = command.and_then(Node::text).is_some_and(is_our_program)
+                    && existing.get("args").is_some_and(|a| a.items().len() == 1 && a.items()[0].text() == Some("mcp"));
+                match command {
+                    Some(c) if ours && c.text() != Some(launcher_path().as_str()) => {
+                        splices.push(replace_string(c, &launcher_path()));
+                        note = "formslot server command path updated";
+                    }
+                    _ => note = "formslot server already defined, left as it is",
+                }
             } else {
                 if let Some(s) = jsonedit::append(text, m, &[(Some(SERVER.to_string()), server)], &unit) {
                     splices.push(s);

@@ -54,7 +54,7 @@ const HELP: &str = "formslot: the Form family's context service
   dense status                      the model, sqlite-vec and the embedded units per corpus
   map <corpus> [--tokens N] [--formmap]   the ranked repo map, or FORMMAP.md under 150 lines
   pack <task> [--corpus C] [--tokens N] [--tier T1|T4|T16] [--json]   a P0/P1/P2 context pack
-  eval [--gold F] [--corpus C] [--arm formslot|baseline|dense|all] [--k 1,4,10] [--json] [--out F]   recall, MRR, nDCG, tokens and latency over a gold set
+  eval [--gold F] [--corpus C] [--arm formslot|baseline|dense|all] [--k 1,4,10] [--half all|tuning|held-out] [--json] [--out F]   recall, MRR, nDCG, tokens and latency over a gold set
   mcp        serve MCP over stdio (newline-delimited JSON-RPC) for an agent's .mcp.json
   check [--mode warn|deny|off]      PreToolUse hook: reads the hook JSON on stdin, answers declines and reuse
   hook <event>                      Claude Code hook: SessionStart, UserPromptSubmit, PostToolUse, PreCompact, SubagentStart, Stop
@@ -90,6 +90,10 @@ fn main() -> ExitCode {
     quiet_on_closed_pipe();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let command = args.first().map(String::as_str).unwrap_or("help");
+    if args.len() > 1 && args[1..].iter().any(|a| a == "--help" || a == "-h") {
+        print!("{HELP}");
+        return ExitCode::SUCCESS;
+    }
     match command {
         "serve" => service_cmd::serve(&args[1..]),
         "start" => service_cmd::start(),

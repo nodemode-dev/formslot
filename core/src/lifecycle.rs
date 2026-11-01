@@ -171,16 +171,43 @@ pub fn snapshot() -> Value {
     })
 }
 
-pub fn exit_reason() -> Option<&'static str> {
+const IDLE_GRACE: Duration = Duration::from_millis(500);
+const DRAIN_WAIT: Duration = Duration::from_secs(5);
+
+fn decide() -> Option<&'static str> {
     let mut s = state();
     if s.stop {
         return Some("requested");
     }
     let now = Instant::now();
     prune(&mut s, now);
+    if crate::http::open_connections() > 0 {
+        s.last = now;
+    }
     let limit = idle_limit()?;
     if IN_FLIGHT.load(Ordering::SeqCst) == 0 && s.leases.is_empty() && now.saturating_duration_since(s.last) >= limit {
         return Some("idle");
     }
     None
+}
+
+pub fn exit_reason() -> Option<&'static str> {
+    match decide() {
+        Some("idle") => {
+            std::thread::sleep(IDLE_GRACE);
+            decide()
+        }
+        other => other,
+    }
+}
+
+pub fn drain() -> bool {
+    let began = Instant::now();
+    while IN_FLIGHT.load(Ordering::SeqCst) > 0 || crate::http::open_connections() > 0 {
+        if began.elapsed() >= DRAIN_WAIT {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    true
 }

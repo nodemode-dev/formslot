@@ -50,12 +50,44 @@ pub fn on_path(name: &str) -> Option<PathBuf> {
     env::split_paths(&path).filter(|dir| !dir.as_os_str().is_empty()).find_map(|dir| in_dir(&dir, name))
 }
 
+#[cfg(unix)]
+fn trusted(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    let me = std::fs::metadata("/proc/self").or_else(|_| std::fs::metadata(config::data_dir())).map(|m| m.uid());
+    meta.mode() & 0o022 == 0 && me.is_ok_and(|uid| uid == meta.uid())
+}
+
+#[cfg(not(unix))]
+fn trusted(_path: &Path) -> bool {
+    true
+}
+
+fn data_bin() -> PathBuf {
+    config::data_dir().join("bin")
+}
+
+fn in_data_bin(name: &str) -> Option<PathBuf> {
+    let dir = data_bin();
+    if dir.exists() && !trusted(&dir) {
+        return None;
+    }
+    in_dir(&dir, name).filter(|p| trusted(p))
+}
+
+pub fn refused(name: &str) -> Option<PathBuf> {
+    let found = in_dir(&data_bin(), name)?;
+    in_data_bin(name).is_none().then_some(found)
+}
+
 pub fn find(name: &str) -> Option<PathBuf> {
     if let Some(value) = env::var_os(env_name(name)).filter(|v| !v.is_empty()) {
         let given = PathBuf::from(value);
         return runnable(&given).then_some(given);
     }
-    in_dir(&config::data_dir().join("bin"), name).or_else(|| on_path(name))
+    in_data_bin(name).or_else(|| on_path(name))
 }
 
 pub fn command(name: &str) -> PathBuf {
@@ -65,7 +97,7 @@ pub fn command(name: &str) -> PathBuf {
 pub fn source(name: &str) -> &'static str {
     if env::var_os(env_name(name)).is_some_and(|v| !v.is_empty()) {
         "environment"
-    } else if in_dir(&config::data_dir().join("bin"), name).is_some() {
+    } else if in_data_bin(name).is_some() {
         "data folder"
     } else if on_path(name).is_some() {
         "PATH"

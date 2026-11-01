@@ -176,3 +176,11 @@ L6. The `>` of `=>` or `->` inside a parameter list closed the depth counter, so
 
 The S7 exit slot: formvis's Preferences dialog shell (SettingsDialog in frontend/src/ui/app-dialogs.ts with its constructor closures grp, nt, cols and add, the show and section methods, and the cv-prefs-* block in frontend/src/styles/dialogs.css), mapped from the formvis settings map and checked against the pinned commit 8fe4ce45. The closures are not indexed symbols, so the manifest names them in the description and lists the class, show, setEngine and PagePrefsRows as exports. It depends on the dialog kit, control rows, prefs store, DOM helpers, icons and panels stylesheet slots. Status proposed, version 0.1.0, like the other 25; sha256, lines and contentHash are filled by `slot refresh`. The formvis engine, GPU, generative and plug-in rows are listed as renameables, because a port keeps the shell and replaces the sections.
 
+### core/src/memory/recall.rs · recall
+
+- refers-to: core/src/memory/recall.rs :: recall
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+`recall` and packs listed the same HASHOUT text several times (ids 366-369 and 370-372 of the formvis store): `hashout::parse` gives an entry with several `refers-to` targets one record per anchor, each with its own content hash because the anchor is part of it. Ingest was not changed: the records differ by anchor, each anchor is checked for staleness on its own, and owner records and old records are never deleted. The duplicates are folded at read time instead, keyed by a hash of kind, authority, title and text, best-ranked first (a query with `--anchor` keeps the record ranked first, which the anchor filter has already narrowed). `recall "fvd projects thumbnails"` showed the entry four times before and once after.
+
