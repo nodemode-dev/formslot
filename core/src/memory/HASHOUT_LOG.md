@@ -232,3 +232,19 @@ Owner authority came from a `CLAUDE.md`, `AGENTS.md` or `NOTICE.md` at any depth
 
 After a successful ingest the run stores in the existing `meta` table (key `memory_ingest:<corpus id>`, no migration) a SHA-256 over: the binary version, `INGEST_FORMAT` (a number to raise when the ingest rules change without a version bump), the declines override file or `built-in`, every `path, oid, role` of the corpus files that classify as a memory source, the scan-finding paths, and per status the count, highest id and latest `updated_at` of the non-agent records. The next ingest computes the fingerprint first; if it equals the stored one the sources, the units (keyed by blob oid) and the records are as the last run left them, and the report is built from the stored source and item counts and the live record counts with `skipped: true` (a new field; `anchors` is zero because no check ran). The write is inside the ingest savepoint, so a failed run leaves no fingerprint. A changed record count or timestamp, an owner supersede or an upgrade makes the next run a full one. Measured on the store copy: formvis 0.78 s (v0.12.0, unchanged) to 0.03 s, subform 0.02 s, results identical (7,877 items unchanged, 0 added). The CLI should print the skipped flag; that line belongs to the cli owner.
 
+### core/src/memory/ingest.rs · fingerprint (code units and head)
+
+- refers-to: core/src/memory/ingest.rs :: fingerprint
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+The fingerprint covered only memory-source files, but `gather` resolves HASHOUT `refers-to` anchors against the unit table, which is a function of every indexed file's blob oid. Renaming or deleting an anchored symbol therefore left the fingerprint equal and the ingest was skipped, so its record stayed active. Two fixes were possible: run `check_anchors` always and skip only gather and reconcile, or digest the code units into the fingerprint. The second was taken because gather itself depends on the units (an anchor and a tombstone are decided from them), so skipping gather after a code change would be wrong even if `check_anchors` ran; the fingerprint now holds the indexed head commit and `path, oid, role` of every file of the corpus. The skip now means "nothing at all changed", which is what the cost note above measured (an unchanged corpus); a code change costs a full ingest, which is the cheap path anyway (0.03 s skipped against under a second for the largest store copy). Driven in a scratch repo: unchanged re-ingest reports 0 checked (skipped); after replacing the anchored function and committing, the next ingest ran in full (1 anchor checked).
+
+### core/src/memory/ingest.rs · is_root (.claude/CLAUDE.md)
+
+- refers-to: core/src/memory/ingest.rs :: is_root
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+Claude Code reads `.claude/CLAUDE.md` as a project memory file next to the root one, so it now carries owner authority like the root `CLAUDE.md`. Owner decision kept: a nested package `CLAUDE.md` or `AGENTS.md` (for example `packages/api/CLAUDE.md`) stays a derived `how-to`, never P0 and never a PreToolUse trigger. Consequence for monorepos: rules written in package-level files lose owner authority and must be copied into the root file or `.claude/CLAUDE.md` to count as owner rules.
+

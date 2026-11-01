@@ -262,3 +262,11 @@ Convention and decline records ranked below the pack because the 30 percent coun
 - logged: v0.13.0 · 2026-10-30
 
 Vocabulary-gap code misses, by a general change only. Index side: the full-text row of a unit gets the split words of every compound identifier in its body (camelCase and digit boundaries; snake_case and kebab-case are already separated by the tokenizer), up to 2 KiB, and the split words of its path segments in the signature column. Query side: `query_terms` already split both styles; the lexical query now takes 24 terms instead of 12, because the 13th word of a long task ("trust" in h008) was dropped by position. No synonym list and nothing keyed on gold wording. Result on the five tasks: h008 not found to rank 53, h039 43 to 14 (now in the pack), h042 still not found, h106 61 to 66, h112 76 to 67. The index text changed, so `formslot search rebuild` is needed; trigram rows are unchanged.
+
+### core/src/search/lexical.rs · term_weights (active df, idf floor)
+
+- refers-to: core/src/search/lexical.rs :: term_weights
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+The idf used `total` over active records but `df` over the whole full-text table, which also holds stale, superseded and proposed rows, so df could exceed total and the log went negative, lowering the mass of common terms below zero. df is now counted over a join with `memory_record` where status is active, the same population as `total`, and idf is clamped at 0. A term found only in inactive records has df 0 and is skipped as before.

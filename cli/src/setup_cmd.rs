@@ -280,7 +280,13 @@ impl Setup {
     }
 
     fn word(&self) -> String {
-        if self.path_ok { "formslot".into() } else { format!("\"{}\"", self.bin.display()) }
+        if self.path_ok {
+            "formslot".into()
+        } else if cfg!(windows) {
+            format!("& \"{}\"", engine::shown(&self.bin))
+        } else {
+            format!("\"{}\"", self.bin.display())
+        }
     }
 
     fn path_env(&self) -> Option<OsString> {
@@ -331,23 +337,38 @@ impl Setup {
         let target = dir.join(engine::binary_name());
         match engine::placement(&exe, &dir) {
             Placement::Same => {
-                self.ui.tag("done", &format!("formslot is already in {}", dir.display()));
+                self.ui.tag("done", &format!("formslot is already in {}", engine::shown(&dir)));
                 self.kept.push("formslot is in your program folder".into());
                 self.bin = target;
             }
             state => {
                 let (plain, ask) = if state == Placement::Absent {
-                    (format!("copy formslot to {}", dir.display()), format!("Copy formslot to {}?", dir.display()))
+                    (format!("copy formslot to {}", engine::shown(&dir)), format!("Copy formslot to {}?", engine::shown(&dir)))
                 } else {
-                    (format!("replace the older copy of formslot in {}", dir.display()), format!("Replace the older copy of formslot in {}?", dir.display()))
+                    (format!("replace the older copy of formslot in {}", engine::shown(&dir)), format!("Replace the older copy of formslot in {}?", engine::shown(&dir)))
                 };
                 if dry {
                     self.ui.tag("would", &plain);
                 } else if self.ui.confirm(&ask, true) {
-                    match critical(|| engine::place_binary(&exe, &dir)) {
+                    let replacing = state == Placement::Differs;
+                    let was_running = replacing && config::data_dir_path().exists() && run_self(&target, &["status"], None, false).0;
+                    let placed = critical(|| {
+                        if was_running {
+                            run_self(&target, &["stop"], None, false);
+                        }
+                        let placed = engine::place_binary(&exe, &dir);
+                        if was_running {
+                            let _ = run_self(&target, &["start"], None, false);
+                        }
+                        placed
+                    });
+                    if was_running {
+                        self.ui.say("The running helper was stopped for the swap and started again.");
+                    }
+                    match placed {
                         Ok(dest) => {
-                            self.ui.tag("done", &format!("copied to {}", dest.display()));
-                            self.done.push(format!("copied formslot to {}", dest.display()));
+                            self.ui.tag("done", &format!("copied to {}", engine::shown(&dest)));
+                            self.done.push(format!("copied formslot to {}", engine::shown(&dest)));
                             self.bin = dest;
                         }
                         Err(e) => {
@@ -421,7 +442,8 @@ impl Setup {
     }
 
     fn step_path_windows(&mut self, dir: &Path) {
-        let script = engine::windows_path_script(dir);
+        let backup = engine::path_backup_file(&config::data_dir_path());
+        let script = engine::windows_path_script(dir, &backup);
         if self.opts.no_path {
             self.ui.tag("skipped", "--no-path: your PATH was not touched");
             self.ui.say(&format!("To add it yourself, run in PowerShell: {script}"));
@@ -440,7 +462,7 @@ impl Setup {
         }
         let ok = critical(|| Command::new("powershell").args(["-NoProfile", "-Command", &script]).status().map(|s| s.success()).unwrap_or(false));
         if ok {
-            self.ui.tag("done", "added to your user PATH. Open a new terminal window for it to take effect.");
+            self.ui.tag("done", &format!("your user PATH now lists it (when it had to be changed, the old value is saved in {}). Open a new terminal window for it to take effect.", engine::shown(&backup)));
             self.done.push("added the formslot folder to your PATH".into());
             self.path_ok = true;
         } else {
@@ -493,10 +515,10 @@ impl Setup {
         let (top, name) = self.validate(raw)?;
         let known = indexed().iter().any(|(_, p, _)| Path::new(p) == top);
         if self.opts.dry {
-            self.ui.tag("would", &format!("{} {} ({})", if known { "refresh" } else { "index" }, name, top.display()));
+            self.ui.tag("would", &format!("{} {} ({})", if known { "refresh" } else { "index" }, name, engine::shown(&top)));
             return Ok(name);
         }
-        self.ui.say(&format!("Reading {name}. A first read of a big project can take a minute."));
+        self.ui.say(&format!("Reading {name}. A first read of a big project can take a minute; Ctrl+C waits until this project is finished."));
         let stop = Arc::new(AtomicBool::new(false));
         let spin = io::stdout().is_terminal().then(|| {
             let stop = stop.clone();
@@ -512,11 +534,14 @@ impl Setup {
                 let _ = io::stdout().flush();
             })
         });
-        let result = Store::open(&config::corpus_db()).and_then(|mut store| corpus::add(&mut store, &top, "HEAD"));
-        stop.store(true, Ordering::SeqCst);
-        if let Some(handle) = spin {
-            let _ = handle.join();
-        }
+        let result = critical(|| {
+            let result = Store::open(&config::corpus_db()).and_then(|mut store| corpus::add(&mut store, &top, "HEAD"));
+            stop.store(true, Ordering::SeqCst);
+            if let Some(handle) = spin {
+                let _ = handle.join();
+            }
+            result
+        });
         let (found, run) = result.map_err(|e| format!("indexing {name} failed: {e}"))?;
         self.ui.tag("done", &format!("{}: {} files read in {} ms{}", found.name, found.files, run.millis, if known { " (refreshed)" } else { "" }));
         if run.secrets > 0 {
@@ -553,7 +578,11 @@ impl Setup {
             }
         }
         let cwd = std::env::current_dir().ok().and_then(|d| Repo::open(&d).ok()).map(|r| r.toplevel().to_path_buf());
-        let mut default = cwd.filter(|c| !indexed().iter().any(|(_, p, _)| Path::new(p) == c.as_path())).map(|c| c.display().to_string());
+        let home = engine::home_dir().map(|h| h.canonicalize().unwrap_or(h));
+        let mut default = cwd
+            .filter(|c| !indexed().iter().any(|(_, p, _)| Path::new(p) == c.as_path()))
+            .filter(|c| home.as_ref().is_none_or(|h| c.canonicalize().unwrap_or_else(|_| c.clone()) != *h))
+            .map(|c| engine::shown(&c));
         let mut count = 0;
         loop {
             let question = if default.is_some() { "Which folder holds your project? (you can drag it into this window)" } else { "Folder of a project to add (drag it here), or press Enter to skip:" };
@@ -585,7 +614,7 @@ impl Setup {
         }
         self.ui.say(&format!("Projects formslot has read ({}):", all.len()));
         for (name, path, files) in all {
-            self.ui.say(&format!("  {name}  {files} files  {path}"));
+            self.ui.say(&format!("  {name}  {files} files  {}", engine::shown(Path::new(&path))));
         }
     }
 
@@ -646,7 +675,7 @@ impl Setup {
             self.ui.say("");
             self.ui.say("One step is left that only you can do. Claude Code asks before it trusts a new tool, so, for each project:");
             for (name, path) in &linked {
-                self.ui.say(&format!("  {name}:  cd \"{path}\"   then   claude"));
+                self.ui.say(&format!("  {name}:  cd \"{}\"   then   claude", engine::shown(Path::new(path))));
             }
             self.ui.say("When Claude Code asks whether to use the \"formslot\" server, choose to approve it. You only do this once per project.");
         }
@@ -699,7 +728,7 @@ impl Setup {
             println!("  (Open a new terminal window first so the `formslot` command is found.)");
         }
         println!();
-        println!("Your data lives in {}", config::data_dir_path().display());
+        println!("Your data lives in {}", engine::shown(&config::data_dir_path()));
         println!("Everything else: formslot help");
     }
 }

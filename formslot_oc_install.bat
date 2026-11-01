@@ -44,13 +44,17 @@ set "SETUPEXE=%DEST%\formslot.exe"
 
 :offer
 if defined FORMSLOT_NO_SETUP_OFFER exit /b 0
+powershell -NoProfile -Command "if ([Console]::IsInputRedirected) { exit 1 }" 2>nul
+if errorlevel 1 exit /b 0
 if not defined SETUPEXE set "SETUPEXE=%BUILT%"
 echo.
 echo Or let formslot walk you through everything: "%SETUPEXE%" setup
 set "ANSWER="
 set /p "ANSWER=Run the guided setup now? [Y/n] "
 if not defined ANSWER goto runsetup
-if /i "%ANSWER:~0,1%"=="y" goto runsetup
+setlocal EnableDelayedExpansion
+if /i "!ANSWER:~0,1!"=="y" (endlocal & goto runsetup)
+endlocal
 exit /b 0
 
 :runsetup

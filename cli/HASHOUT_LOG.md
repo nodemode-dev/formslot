@@ -253,3 +253,43 @@ No arguments used to print the help. It now offers setup or a status only when s
 - logged: v0.13.0 · 2026-10-30
 
 The PATH line is shown first and appended only after a yes (or `--yes` without `--no-path`). The file is backed up as `<name>.formslot-backup` before the append, and a marker comment line makes a second run recognise the edit. The append goes through the path itself, not a rename, so a shell file that is a symlink into a dotfiles repository keeps being a symlink. No sudo anywhere. Windows runs one PowerShell command that adds the folder to the user PATH only when it is not listed.
+
+### core/src/setup.rs · rc_plan, bash_file, rc_has, add_to_rc
+
+- refers-to: core/src/setup.rs :: rc_plan, bash_file, rc_has, add_to_rc
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+Startup file choice follows what the shell reads. macOS bash is a login shell, so it reads the first existing of `.bash_profile`, `.bash_login`, `.profile`; `bash_file` picks that one and names `.bash_profile` only when none exists (the old code always chose `.bash_profile`, which would have hidden an existing `.profile` from a login shell). Because `.profile` wins when it is the only file, the case "create `.bash_profile` while `.profile` exists" cannot arise through `rc_plan`; `add_to_rc` still prefixes a new `.bash_profile` with a line that sources `.profile` when one is there, so nothing is lost if the file appears between the plan and the write. Linux bash stays `.bashrc`. zsh honours `ZDOTDIR`, fish honours `XDG_CONFIG_HOME`. The macOS branch is selected by `cfg!(target_os = "macos")` and was reasoned through, not run, on the Linux build machine. The rc file is read as bytes (`rc_has` searches `String::from_utf8_lossy`), the backup is made whenever the file exists (an empty file too, and a file that is not valid UTF-8, which the old `read_to_string` treated as absent and then appended to without a backup), and the missing trailing newline is checked on the bytes. Driven on Linux through a pty with a `.bashrc` holding bytes `\xe9 \xff\xfe` and no final newline: the backup is byte-identical, the original bytes are untouched, a newline and blank line precede the marker, and a second run reports "already adds it" and writes nothing.
+
+### core/src/setup.rs · windows_path_script, path_backup_file
+
+- refers-to: core/src/setup.rs :: windows_path_script, path_backup_file
+- kind: warning-context
+- logged: v0.13.0 · 2026-10-30
+
+`[Environment]::GetEnvironmentVariable('Path','User')` expands `%VAR%` entries and writing the result back as a plain string turned an expandable user Path into a fixed one. The script now reads the raw value with `GetValue('Path','',DoNotExpandEnvironmentNames)`, and only when the folder is not listed it prints the old value, saves it to `user-path-backup-<seconds>.txt` in the data folder, and writes the new value through a writable key with `SetValue(...,ExpandString)`. A last `SetEnvironmentVariable` of a throwaway name to null makes Windows broadcast the change, which direct registry writes do not. Re-running changes nothing. Not run here: there is no PowerShell or registry on the Linux build machine.
+
+### cli/src/setup_cmd.rs · step_install (upgrade while running)
+
+- refers-to: cli/src/setup_cmd.rs :: step_install, core/src/setup.rs :: place_binary
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+When the placed binary differs and the old copy answers `status`, setup stops the service with the old binary, copies, and starts it with the new file, all inside one `critical` section so Ctrl+C cannot leave it stopped; a failed copy starts the old binary again. A running Windows program cannot be replaced, which is why the stop comes first. `place_binary` now removes `formslot.new` when the copy or `set_permissions` fails, not only when the rename fails. Driven on Linux: a changed placed binary with a running service gave a new pid and the new file in place, no `.new` left.
+
+### cli/src/setup_cmd.rs · index (critical section)
+
+- refers-to: cli/src/setup_cmd.rs :: index
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+The interrupt message says nothing is left half-done, but project indexing ran outside `critical`, so Ctrl+C could stop it between a store write and its commit. Indexing now runs in `critical` (the spinner is stopped inside it), so Ctrl+C waits for the project to finish and the line before it says so. The alternative, softening the message, was rejected because a half-read project is the case the message promises about.
+
+### cli/src/setup_cmd.rs · Windows display lows
+
+- refers-to: core/src/setup.rs :: home_dir, shown; cli/src/setup_cmd.rs :: word, step_projects; formslot_oc_install.bat :: offer
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+On Windows `USERPROFILE` is preferred to `HOME` (a Git Bash `HOME` is a POSIX-style path the shell file logic should not use). `shown` strips `\\?\` and turns `\\?\UNC\` into `\\` for paths printed to the user. When the program is not yet on PATH the hints read `& "path" ...` on Windows so PowerShell runs a quoted path. The folder offered as the default project is dropped when the git toplevel is the home directory itself (a dotfiles repository), so Enter never indexes all of home. The `.bat` offer is skipped when stdin is redirected (a one-line PowerShell `[Console]::IsInputRedirected` check; if PowerShell is missing the offer is skipped, the safe side) and reads the answer under delayed expansion, so a quote or other special character in it cannot break the `if`.

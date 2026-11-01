@@ -68,10 +68,22 @@ pub struct ToolCheck {
 }
 
 pub fn home_dir() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
+    let (first, second) = if cfg!(windows) { ("USERPROFILE", "HOME") } else { ("HOME", "USERPROFILE") };
+    env::var_os(first)
         .filter(|v| !v.is_empty())
+        .or_else(|| env::var_os(second).filter(|v| !v.is_empty()))
         .map(PathBuf::from)
+}
+
+pub fn shown(path: &Path) -> String {
+    let text = path.display().to_string();
+    if let Some(rest) = text.strip_prefix("\\\\?\\UNC\\") {
+        format!("\\\\{rest}")
+    } else if let Some(rest) = text.strip_prefix("\\\\?\\") {
+        rest.to_string()
+    } else {
+        text
+    }
 }
 
 fn hint(tool: &str, os: Os) -> String {
@@ -224,11 +236,17 @@ pub fn place_binary(src: &Path, dir: &Path) -> crate::Result<PathBuf> {
     fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let dest = dir.join(binary_name());
     let temp = dir.join(format!("{}.new", binary_name()));
-    fs::copy(src, &temp).map_err(|e| format!("cannot copy to {}: {e}", temp.display()))?;
+    if let Err(e) = fs::copy(src, &temp) {
+        let _ = fs::remove_file(&temp);
+        return Err(format!("cannot copy to {}: {e}", temp.display()));
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&temp, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        if let Err(e) = fs::set_permissions(&temp, fs::Permissions::from_mode(0o755)) {
+            let _ = fs::remove_file(&temp);
+            return Err(format!("cannot make {} runnable: {e}", temp.display()));
+        }
     }
     fs::rename(&temp, &dest).map_err(|e| {
         let _ = fs::remove_file(&temp);
@@ -263,6 +281,17 @@ pub struct RcPlan {
     pub line: String,
 }
 
+pub fn bash_file(home: &Path, mac: bool) -> PathBuf {
+    if !mac {
+        return home.join(".bashrc");
+    }
+    [".bash_profile", ".bash_login", ".profile"]
+        .iter()
+        .map(|n| home.join(n))
+        .find(|p| p.exists())
+        .unwrap_or_else(|| home.join(".bash_profile"))
+}
+
 pub fn rc_plan(dir: &Path) -> RcPlan {
     let home = home_dir();
     let shown = match home.as_ref().and_then(|h| dir.strip_prefix(h).ok()) {
@@ -272,15 +301,21 @@ pub fn rc_plan(dir: &Path) -> RcPlan {
     let shell = env::var("SHELL").ok().and_then(|s| s.rsplit('/').next().map(str::to_string)).unwrap_or_default();
     let export = format!("export PATH=\"{shown}:$PATH\"");
     let under_home = |rel: &str| home.as_ref().map(|h| h.join(rel));
+    let env_dir = |name: &str| env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     match shell.as_str() {
-        "zsh" => RcPlan { shell, file: under_home(".zshrc"), line: export },
+        "zsh" => {
+            let file = env_dir("ZDOTDIR").map(|d| d.join(".zshrc")).or_else(|| under_home(".zshrc"));
+            RcPlan { shell, file, line: export }
+        }
         "bash" => {
-            let name = if cfg!(target_os = "macos") { ".bash_profile" } else { ".bashrc" };
-            RcPlan { shell, file: under_home(name), line: export }
+            let file = home.as_ref().map(|h| bash_file(h, cfg!(target_os = "macos")));
+            RcPlan { shell, file, line: export }
         }
         "fish" => RcPlan {
             shell,
-            file: under_home(".config/fish/config.fish"),
+            file: env_dir("XDG_CONFIG_HOME")
+                .map(|d| d.join("fish").join("config.fish"))
+                .or_else(|| under_home(".config/fish/config.fish")),
             line: format!("fish_add_path \"{shown}\""),
         },
         _ => RcPlan { shell: if shell.is_empty() { "your shell".into() } else { shell }, file: None, line: export },
@@ -289,7 +324,8 @@ pub fn rc_plan(dir: &Path) -> RcPlan {
 
 pub fn rc_has(plan: &RcPlan) -> bool {
     let Some(file) = &plan.file else { return false };
-    let Ok(text) = fs::read_to_string(file) else { return false };
+    let Ok(bytes) = fs::read(file) else { return false };
+    let text = String::from_utf8_lossy(&bytes);
     text.contains(RC_MARKER) || text.lines().any(|l| l.trim() == plan.line)
 }
 
@@ -307,7 +343,11 @@ pub fn add_to_rc(plan: &RcPlan) -> crate::Result<RcChange> {
     if let Some(parent) = file.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
-    let existing = fs::read_to_string(file).ok();
+    let existing: Option<Vec<u8>> = if file.exists() {
+        Some(fs::read(file).map_err(|e| format!("cannot read {}: {e}", file.display()))?)
+    } else {
+        None
+    };
     let mut backup = None;
     if existing.is_some() {
         let name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -320,7 +360,13 @@ pub fn add_to_rc(plan: &RcPlan) -> crate::Result<RcChange> {
         backup = Some(copy);
     }
     let mut add = String::new();
-    if existing.as_deref().is_some_and(|t| !t.is_empty() && !t.ends_with('\n')) {
+    if existing.is_none()
+        && file.file_name().is_some_and(|n| n == ".bash_profile")
+        && file.with_file_name(".profile").is_file()
+    {
+        add.push_str("[ -f \"$HOME/.profile\" ] && . \"$HOME/.profile\"\n\n");
+    }
+    if existing.as_deref().is_some_and(|t| !t.is_empty() && !t.ends_with(b"\n")) {
         add.push('\n');
     }
     if existing.as_deref().is_some_and(|t| !t.is_empty()) {
@@ -340,11 +386,27 @@ pub fn add_to_rc(plan: &RcPlan) -> crate::Result<RcChange> {
     Ok(RcChange { backup })
 }
 
-pub fn windows_path_script(dir: &Path) -> String {
+pub fn windows_path_script(dir: &Path, backup: &Path) -> String {
     let d = dir.to_string_lossy().replace('\'', "''");
+    let b = backup.to_string_lossy().replace('\'', "''");
     format!(
-        "$d='{d}'; $p=[Environment]::GetEnvironmentVariable('Path','User'); if ($null -eq $p) {{ $p='' }}; if (($p -split ';') -notcontains $d) {{ [Environment]::SetEnvironmentVariable('Path', ($p.TrimEnd(';') + ';' + $d).TrimStart(';'), 'User') }}"
+        "$d='{d}'; $b='{b}'; \
+$k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); \
+$p=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $k.Close(); \
+if (($p -split ';') -notcontains $d) {{ \
+Write-Host ('Your user Path was: ' + $p); \
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $b) | Out-Null; \
+Set-Content -LiteralPath $b -Value $p -Encoding UTF8; \
+Write-Host ('Saved a copy in ' + $b); \
+$w=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); \
+$w.SetValue('Path',(($p.TrimEnd(';') + ';' + $d).TrimStart(';')),[Microsoft.Win32.RegistryValueKind]::ExpandString); $w.Close(); \
+[Environment]::SetEnvironmentVariable('FORMSLOT_PATH_NOTIFY',$null,'User') }}"
     )
+}
+
+pub fn path_backup_file(data_dir: &Path) -> PathBuf {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    data_dir.join(format!("user-path-backup-{stamp}.txt"))
 }
 
 pub fn clean_path(raw: &str) -> String {

@@ -235,13 +235,18 @@ fn term_weights(conn: &Connection, query: &str) -> Vec<(String, f64)> {
     for term in query_terms(query) {
         let Some(m) = fts_or(std::slice::from_ref(&term)) else { continue };
         let df: f64 = conn
-            .query_row("SELECT COUNT(*) FROM memory_fts WHERE memory_fts MATCH ?1", params![m], |r| r.get::<_, i64>(0))
+            .query_row(
+                "SELECT COUNT(*) FROM memory_fts JOIN memory_record r ON r.id = memory_fts.rowid \
+                 WHERE memory_fts MATCH ?1 AND r.status = 'active'",
+                params![m],
+                |r| r.get::<_, i64>(0),
+            )
             .map(|n| n as f64)
             .unwrap_or(0.0);
         if df == 0.0 {
             continue;
         }
-        let idf = (1.0 + (total - df + 0.5) / (df + 0.5)).ln();
+        let idf = (1.0 + (total - df + 0.5) / (df + 0.5)).ln().max(0.0);
         let key = stem(&term);
         if !out.iter().any(|(k, _)| *k == key) {
             out.push((key, idf));

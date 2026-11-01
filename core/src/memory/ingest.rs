@@ -112,7 +112,7 @@ fn classify(path: &str, role: &str) -> Option<Class> {
 }
 
 fn is_root(path: &str) -> bool {
-    !path.contains('/')
+    !path.contains('/') || path == ".claude/CLAUDE.md"
 }
 
 const DOC_MAX_RECORDS: usize = 400;
@@ -639,6 +639,10 @@ fn fingerprint(conn: &Connection, corpus_id: i64) -> crate::Result<String> {
         Err(_) => text.push_str("built-in"),
     }
     text.push('\n');
+    let head: Option<String> = conn
+        .query_row("SELECT head FROM corpus WHERE id = ?1", params![corpus_id], |r| r.get(0))
+        .map_err(sql)?;
+    text.push_str(&format!("head\t{}\n", head.unwrap_or_default()));
     {
         let mut stmt = conn
             .prepare("SELECT path, oid, role FROM file WHERE corpus_id = ?1 ORDER BY path")
@@ -650,9 +654,7 @@ fn fingerprint(conn: &Connection, corpus_id: i64) -> crate::Result<String> {
             .map_err(sql)?;
         for row in rows {
             let (path, oid, role) = row.map_err(sql)?;
-            if classify(&path, &role).is_some() {
-                text.push_str(&format!("{path}\t{oid}\t{role}\n"));
-            }
+            text.push_str(&format!("{path}\t{oid}\t{role}\n"));
         }
     }
     {
