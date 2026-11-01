@@ -26,6 +26,7 @@ Crates added directly, with the versions in `Cargo.lock`. Each runs in the distr
 | ureq | 3.5.0 | MIT OR Apache-2.0 | distributed binary | the `pack --count remote` HTTPS call, with rustls and the platform certificate verifier, no redirects followed (`core`) |
 | keyring | 4.2.0 | MIT OR Apache-2.0 | distributed binary | the Anthropic key from the system password store (`core`) |
 | blake3 | 1.8.7 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception; used under Apache-2.0 | distributed binary | identity hashes for dedup (`core`) |
+| ctrlc | 3.5.2 | MIT OR Apache-2.0 | distributed binary | SIGINT and SIGTERM (and Ctrl+C on Windows) end `formslot serve` cleanly, so service.json and the lock are removed (`cli`, feature `termination`); its own dependencies are nix 0.31.3 (MIT), cfg-if 1.0.5 and libc 0.2.191 (MIT OR Apache-2.0), bitflags 2.13.2 (MIT OR Apache-2.0), cfg_aliases 0.2.2 (MIT) on Unix, windows-sys 0.61.2 (MIT OR Apache-2.0) on Windows, and dispatch2 0.3.1 (Zlib OR Apache-2.0 OR MIT) with block2 0.6.2, objc2 0.6.5 and objc2-encode 4.1.0 (MIT) on macOS |
 
 The default binary also contains the transitive crates of ureq and keyring, with the versions in `Cargo.lock` and the licences from `cargo metadata`:
 
@@ -80,4 +81,4 @@ The files `core/src/http.rs`, `core/src/log.rs`, `core/src/redact.rs` and the ro
 
 ## Found on the system, never bundled
 
-git (GPL-2.0) is run as a separate program to read repositories; gitleaks (MIT), when present, is run the same way. Neither is linked or shipped.
+git (GPL-2.0) is run as a separate program to read repositories; gitleaks (MIT), when present, is run the same way. Neither is linked or shipped. ripgrep (`rg`, MIT or Unlicense) and curl are optional and run the same way; all of gitleaks, rg and curl are found by one resolver: `FORMSLOT_<NAME>_BIN`, then `<data folder>/bin/`, then PATH.

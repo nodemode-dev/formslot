@@ -1,7 +1,4 @@
-use std::io::{Read, Write};
-use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
-use std::process::{Command, ExitCode};
-use std::time::Duration;
+use std::process::ExitCode;
 
 mod corpus_cmd;
 mod dedup_cmd;
@@ -11,18 +8,19 @@ mod hook_cmd;
 mod mcp_cmd;
 mod memory_cmd;
 mod search_cmd;
+mod service_cmd;
 mod slot_cmd;
 mod symbols_cmd;
 
-use formslot_core::discovery::{self, ServiceInfo};
-use formslot_core::{CONTRACT, VERSION, api, config, http, log};
-use serde_json::{Value, json};
+use formslot_core::VERSION;
 
 const HELP: &str = "formslot: the Form family's context service
 
-  serve      run the service on 127.0.0.1 until stopped (one per data folder)
-  status     say whether the service is running, and its health
-  doctor     print the data folder, git, and the discovery file
+  serve [--detach]   run the service on 127.0.0.1 until stopped (one per data folder); --detach starts it in the background
+  start      start the service in the background if none runs, wait for it, print its port and pid
+  stop       stop the running service gracefully
+  status     say whether the service is running, its health, its leases and idle time
+  doctor [<repo>]   check git, the data folder and modes, the service, the store, optional tools, and that hooks find formslot; exits 1 on a real problem
   add <path> [--ref <rev>]          index a repository at a commit (HEAD)
   reindex <name> [--ref <rev>]      index again; only blobs not seen before are read
   stats <name> [--json]             files, lines and bytes by language, roles, licences
@@ -66,6 +64,10 @@ const HELP: &str = "formslot: the Form family's context service
 
   FORMSLOT_PORT       the port (5645); 0 asks the system for a free one
   FORMSLOT_DATA_DIR   the data folder (~/.formslot)
+  FORMSLOT_IDLE_MINUTES   stop the service after this many minutes with no lease and no request (10); 0 turns it off
+  FORMSLOT_IDLE_SECONDS   the same in seconds, for checking; takes precedence
+  FORMSLOT_LEASE_SECONDS  how long a lease lasts without a heartbeat (90)
+  FORMSLOT_<NAME>_BIN     the path of an optional program: GITLEAKS, RG or CURL
 ";
 
 fn quiet_on_closed_pipe() {
@@ -89,9 +91,11 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let command = args.first().map(String::as_str).unwrap_or("help");
     match command {
-        "serve" => serve(),
-        "status" => status(),
-        "doctor" => doctor(),
+        "serve" => service_cmd::serve(&args[1..]),
+        "start" => service_cmd::start(),
+        "stop" => service_cmd::stop(),
+        "status" => service_cmd::status(),
+        "doctor" => service_cmd::doctor(&args[1..]),
         "add" => corpus_cmd::add(&args[1..]),
         "reindex" => corpus_cmd::reindex(&args[1..]),
         "stats" => corpus_cmd::stats(&args[1..]),
@@ -131,122 +135,3 @@ fn main() -> ExitCode {
     }
 }
 
-fn serve() -> ExitCode {
-    let lock = match discovery::acquire_lock() {
-        Ok(Some(lock)) => lock,
-        Ok(None) => {
-            return match discovery::read() {
-                Ok(Some(info)) => {
-                    println!("formslot is already running on 127.0.0.1:{} (pid {})", info.port, info.pid);
-                    ExitCode::SUCCESS
-                }
-                _ => {
-                    println!("formslot is already running (its discovery file is not written yet)");
-                    ExitCode::SUCCESS
-                }
-            };
-        }
-        Err(e) => {
-            eprintln!("formslot: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    if let Ok(Some(old)) = discovery::read()
-        && !discovery::pid_alive(old.pid)
-    {
-        discovery::remove();
-    }
-    let token = discovery::new_token();
-    let server = match http::start(config::port(), token.clone(), api::route) {
-        Ok(server) => server,
-        Err(e) => {
-            eprintln!("formslot: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let info = ServiceInfo::new(server.port, token);
-    if let Err(e) = discovery::write(&info) {
-        eprintln!("formslot: {e}");
-        return ExitCode::FAILURE;
-    }
-    log::record("serve", json!({ "port": server.port, "version": VERSION }));
-    println!("formslot serves on http://127.0.0.1:{}", server.port);
-    server.wait();
-    discovery::remove();
-    drop(lock);
-    ExitCode::SUCCESS
-}
-
-fn health(info: &ServiceInfo) -> Result<Value, String> {
-    let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, info.port);
-    let mut stream = TcpStream::connect_timeout(&addr.into(), Duration::from_secs(2)).map_err(|e| e.to_string())?;
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let request = format!(
-        "GET /api/health HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n",
-        info.port, info.token
-    );
-    stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
-    let mut raw = String::new();
-    stream.read_to_string(&mut raw).map_err(|e| e.to_string())?;
-    let status = raw.split_whitespace().nth(1).unwrap_or("0").to_string();
-    if status != "200" {
-        return Err(format!("the service answered {status}"));
-    }
-    let body = raw.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
-    serde_json::from_str(body).map_err(|e| format!("the health answer was not JSON ({e})"))
-}
-
-fn status() -> ExitCode {
-    let info = match discovery::read() {
-        Ok(Some(info)) => info,
-        Ok(None) => {
-            println!("formslot is not running");
-            return ExitCode::from(1);
-        }
-        Err(e) => {
-            eprintln!("formslot: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    if !discovery::pid_alive(info.pid) {
-        println!("formslot is not running (the discovery file is stale: pid {} is gone)", info.pid);
-        return ExitCode::from(1);
-    }
-    match health(&info) {
-        Ok(answer) => {
-            let version = answer.get("version").and_then(Value::as_str).unwrap_or("?");
-            let contract = answer.get("contract").and_then(Value::as_u64).unwrap_or(0);
-            println!(
-                "formslot {version} is running on 127.0.0.1:{} (pid {}, contract {contract}, since {})",
-                info.port, info.pid, info.started
-            );
-            if contract != u64::from(CONTRACT) {
-                println!("note: this command line speaks contract {CONTRACT}");
-            }
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            println!("formslot is not answering on 127.0.0.1:{} (pid {}): {e}", info.port, info.pid);
-            ExitCode::from(1)
-        }
-    }
-}
-
-fn doctor() -> ExitCode {
-    println!("formslot {VERSION} (contract {CONTRACT})");
-    println!("data folder: {}", config::data_dir().display());
-    println!("port: {}", config::port());
-    match Command::new("git").arg("--version").output() {
-        Ok(out) if out.status.success() => println!("git: {}", String::from_utf8_lossy(&out.stdout).trim()),
-        _ => println!("git: not found on PATH (formslot needs it to index repositories)"),
-    }
-    match discovery::read() {
-        Ok(Some(info)) => {
-            let alive = if discovery::pid_alive(info.pid) { "alive" } else { "gone" };
-            println!("discovery: port {}, pid {} ({alive}), started {}", info.port, info.pid, info.started);
-        }
-        Ok(None) => println!("discovery: none (the service is not running)"),
-        Err(e) => println!("discovery: {e}"),
-    }
-    ExitCode::SUCCESS
-}

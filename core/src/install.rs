@@ -8,15 +8,65 @@ use crate::slots::{consumer, lock, manifest, storage};
 use crate::store::Store;
 use crate::config;
 
-const OURS: [&str; 2] = ["formslot check", "formslot hook"];
 const SERVER: &str = "formslot";
 
 pub struct Report {
     pub lines: Vec<String>,
 }
 
+pub fn launcher_path() -> String {
+    if crate::binres::on_path("formslot").is_some() {
+        return "formslot".to_string();
+    }
+    std::env::current_exe()
+        .and_then(|p| p.canonicalize())
+        .map(|p| p.to_string_lossy().trim_start_matches(r"\\?\").to_string())
+        .unwrap_or_else(|_| "formslot".to_string())
+}
+
+fn launcher_word() -> String {
+    let path = launcher_path();
+    if path.chars().any(|c| c.is_whitespace() || "\"'$`&|;<>()*?#~!{}[]\\".contains(c)) && path != "formslot" {
+        format!("\"{}\"", path.replace('"', "\\\""))
+    } else {
+        path
+    }
+}
+
+pub fn program_of(command: &str) -> String {
+    first_word(command).0.to_string()
+}
+
+fn first_word(command: &str) -> (&str, &str) {
+    let command = command.trim_start();
+    if let Some(rest) = command.strip_prefix('"') {
+        return match rest.find('"') {
+            Some(end) => (&rest[..end], &rest[end + 1..]),
+            None => (rest, ""),
+        };
+    }
+    match command.find(char::is_whitespace) {
+        Some(end) => (&command[..end], &command[end..]),
+        None => (command, ""),
+    }
+}
+
+pub fn is_ours(command: &str) -> bool {
+    let (program, rest) = first_word(command);
+    let name = program.rsplit(['/', '\\']).next().unwrap_or(program).to_ascii_lowercase();
+    let name = name.strip_suffix(".exe").unwrap_or(&name);
+    if name != "formslot" && name != "formslot-cli" {
+        return false;
+    }
+    let sub = rest.split_whitespace().next().unwrap_or("");
+    sub == "check" || sub == "hook"
+}
+
 fn event_groups(mode: Mode) -> Vec<(&'static str, J)> {
-    let check = if mode == Mode::Deny { "formslot check --mode deny" } else { "formslot check" };
+    let bin = launcher_word();
+    let check = if mode == Mode::Deny { format!("{bin} check --mode deny") } else { format!("{bin} check") };
+    let check = check.as_str();
+    let hook = |event: &str| format!("{bin} hook {event}");
     let handler = |command: &str, timeout: i64, message: Option<&str>, background: bool| {
         let mut pairs = vec![("type", J::s("command")), ("command", J::s(command)), ("timeout", J::Num(timeout))];
         if background {
@@ -36,15 +86,15 @@ fn event_groups(mode: Mode) -> Vec<(&'static str, J)> {
         J::obj(pairs)
     };
     vec![
-        ("SessionStart", group(Some("startup|resume|clear|compact"), handler("formslot hook SessionStart", 15, None, false))),
-        ("UserPromptSubmit", group(None, handler("formslot hook UserPromptSubmit", 10, None, false))),
+        ("SessionStart", group(Some("startup|resume|clear|compact"), handler(&hook("SessionStart"), 15, None, false))),
+        ("UserPromptSubmit", group(None, handler(&hook("UserPromptSubmit"), 10, None, false))),
         (
             "PreToolUse",
             group(Some("Write|Edit|MultiEdit"), handler(check, 5, Some("formslot: checking for existing code"), false)),
         ),
-        ("PostToolUse", group(Some("Write|Edit|MultiEdit"), handler("formslot hook PostToolUse", 10, None, true))),
-        ("SubagentStart", group(None, handler("formslot hook SubagentStart", 10, None, false))),
-        ("Stop", group(None, handler("formslot hook Stop", 10, None, false))),
+        ("PostToolUse", group(Some("Write|Edit|MultiEdit"), handler(&hook("PostToolUse"), 10, None, true))),
+        ("SubagentStart", group(None, handler(&hook("SubagentStart"), 10, None, false))),
+        ("Stop", group(None, handler(&hook("Stop"), 10, None, false))),
     ]
 }
 
@@ -54,7 +104,7 @@ fn has_ours(event_array: &Node) -> bool {
             .get("hooks")
             .map(|hs| {
                 hs.items().iter().any(|h| {
-                    h.get("command").and_then(Node::text).is_some_and(|c| OURS.iter().any(|p| c.starts_with(p)))
+                    h.get("command").and_then(Node::text).is_some_and(is_ours)
                 })
             })
             .unwrap_or(false)
@@ -171,7 +221,7 @@ fn verify(old: &str, new: &str, enable: bool) -> crate::Result<()> {
 }
 
 pub fn merge_mcp(text: Option<&str>) -> crate::Result<(String, String)> {
-    let server = J::obj(vec![("command", J::s("formslot")), ("args", J::Arr(vec![J::s("mcp")]))]);
+    let server = J::obj(vec![("command", J::s(&launcher_path())), ("args", J::Arr(vec![J::s("mcp")]))]);
     let Some(text) = text else {
         let fresh = J::obj(vec![("mcpServers", J::obj(vec![(SERVER, server)]))]);
         return Ok((format!("{}\n", fresh.pretty("", "  ")), "created with the formslot server".to_string()));

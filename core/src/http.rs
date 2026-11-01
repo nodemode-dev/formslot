@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -12,6 +12,29 @@ use crate::{Result, log, redact};
 
 const HEADERS_MAX: usize = 64 * 1024;
 const BODY_MAX: usize = 1024 * 1024;
+const MAX_CONNECTIONS: usize = 64;
+const READ_DEADLINE: Duration = Duration::from_secs(15);
+const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+
+static OPEN_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
+
+struct Slot;
+
+impl Slot {
+    fn take() -> Option<Slot> {
+        if OPEN_CONNECTIONS.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+            OPEN_CONNECTIONS.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(Slot)
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        OPEN_CONNECTIONS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 pub struct Request {
     pub method: String,
@@ -36,11 +59,14 @@ fn reason(status: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        408 => "Request Timeout",
         409 => "Conflict",
         413 => "Payload Too Large",
         421 => "Misdirected Request",
         422 => "Unprocessable Entity",
+        429 => "Too Many Requests",
         500 => "Internal Server Error",
+        503 => "Service Unavailable",
         _ => "Error",
     }
 }
@@ -104,10 +130,30 @@ fn bad() -> Reply {
     Reply::error(400, "bad_request", "The request could not be read.")
 }
 
-fn read_line(reader: &mut BufReader<&TcpStream>, used: &mut usize) -> std::result::Result<String, Reply> {
+fn timed_out() -> Reply {
+    Reply::error(408, "request_timeout", "The request was not received in time.")
+}
+
+fn arm(reader: &BufReader<&TcpStream>, deadline: Instant) -> std::result::Result<(), Reply> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        return Err(timed_out());
+    }
+    reader.get_ref().set_read_timeout(Some(left)).map_err(|_| bad())
+}
+
+fn io_reply(e: &std::io::Error) -> Reply {
+    match e.kind() {
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => timed_out(),
+        _ => bad(),
+    }
+}
+
+fn read_line(reader: &mut BufReader<&TcpStream>, used: &mut usize, deadline: Instant) -> std::result::Result<String, Reply> {
     let mut raw = Vec::new();
     let room = (HEADERS_MAX.saturating_sub(*used) + 1) as u64;
-    let n = reader.by_ref().take(room).read_until(b'\n', &mut raw).map_err(|_| bad())?;
+    arm(reader, deadline)?;
+    let n = reader.by_ref().take(room).read_until(b'\n', &mut raw).map_err(|e| io_reply(&e))?;
     *used += n;
     if n == 0 || *used > HEADERS_MAX || !raw.ends_with(b"\n") {
         return Err(bad());
@@ -119,7 +165,8 @@ fn read_line(reader: &mut BufReader<&TcpStream>, used: &mut usize) -> std::resul
 fn read_request(stream: &TcpStream) -> std::result::Result<Head, Reply> {
     let mut reader = BufReader::new(stream);
     let mut used = 0;
-    let first = read_line(&mut reader, &mut used)?;
+    let deadline = Instant::now() + READ_DEADLINE;
+    let first = read_line(&mut reader, &mut used, deadline)?;
     let mut parts = first.split_whitespace();
     let method = parts.next().unwrap_or_default().to_string();
     let target = parts.next().unwrap_or_default().to_string();
@@ -129,7 +176,7 @@ fn read_request(stream: &TcpStream) -> std::result::Result<Head, Reply> {
         .unwrap_or((target, String::new()));
     let mut headers = HashMap::new();
     loop {
-        let line = read_line(&mut reader, &mut used)?;
+        let line = read_line(&mut reader, &mut used, deadline)?;
         if line.is_empty() {
             break;
         }
@@ -154,7 +201,16 @@ fn read_request(stream: &TcpStream) -> std::result::Result<Head, Reply> {
             return Err(Reply::error(413, "too_large", "Bodies are limited to 1 MiB."));
         }
         body = vec![0; length];
-        reader.read_exact(&mut body).map_err(|_| bad())?;
+        let mut filled = 0;
+        while filled < length {
+            arm(&reader, deadline)?;
+            match reader.read(&mut body[filled..]) {
+                Ok(0) => return Err(bad()),
+                Ok(n) => filled += n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(io_reply(&e)),
+            }
+        }
     }
     Ok(Head { request: Request { method, path, query, body }, headers })
 }
@@ -226,10 +282,16 @@ pub fn start(port: u16, token: String, route: fn(&Request) -> Reply) -> Result<S
         while !halt.load(Ordering::SeqCst) {
             match listener.accept() {
                 Ok((stream, _)) => {
+                    let _ = stream.set_nonblocking(false);
+                    let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
+                    let Some(slot) = Slot::take() else {
+                        log::record("http-refused", json!({ "reason": "busy", "status": 503 }));
+                        write_reply(&stream, &Reply::error(503, "busy", "Too many connections are open; try again shortly.").with_header("Retry-After", "1"));
+                        continue;
+                    };
                     let token = Arc::clone(&token);
                     thread::spawn(move || {
-                        let _ = stream.set_nonblocking(false);
-                        let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+                        let _slot = slot;
                         let reply = match read_request(&stream) {
                             Ok(head) => handle(head, bound, &token, route),
                             Err(reply) => reply,

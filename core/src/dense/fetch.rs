@@ -110,7 +110,7 @@ pub fn download() -> crate::Result<Vec<String>> {
         }
         let partial = dir.join(format!("{}.part", part.file));
         let _ = fs::remove_file(&partial);
-        let status = Command::new("curl")
+        let status = Command::new(crate::binres::command("curl"))
             .args(["--fail", "--location", "--proto", "=https", "--tlsv1.2", "--silent", "--show-error", "--progress-bar"])
             .arg("--output")
             .arg(&partial)

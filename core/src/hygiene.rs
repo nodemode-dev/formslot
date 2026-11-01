@@ -94,16 +94,7 @@ pub fn scan_text(text: &str) -> Vec<Finding> {
 }
 
 pub fn find_gitleaks() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("FORMSLOT_BIN_DIR") {
-        let candidate = Path::new(&dir).join("gitleaks");
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|dir| dir.join("gitleaks"))
-        .find(|candidate| candidate.is_file())
+    crate::binres::find("gitleaks")
 }
 
 pub fn scan_with_gitleaks(tree: &Path) -> Result<Vec<PathFinding>, String> {
