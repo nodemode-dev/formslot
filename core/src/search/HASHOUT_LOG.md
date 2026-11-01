@@ -166,3 +166,19 @@ Owner rules and declines were never reaching the ranking for most rule questions
 - logged: v0.10.2 · 2026-10-30
 
 `--half even|odd` keeps gold lines by line-number parity (even is the tuning half). `run_fused` serves the formslot and dense arms: it calls `search::retrieve_with` with the arm's extra lists, then `pack::build_with` on the same retrieval, so the ranking and the pack come from one search (before, the search ran twice). `run_dense` exists only with `--features dense`: it embeds each task, queries `unit_vec` directly (the same SQL as `dense::vectors::nearest`, which is private to a file outside this change; making `nearest` public would remove the copy) and fuses the 100 nearest units at weight 1.0. A default build keeps the arm as not run with the reason. In this session the dense build compiled with no warnings, the model and tokenizer were fetched into a scratch copy and onnxruntime 1.31.1 came from the pip wheel, but embedding the 17,608 formvis units took 10 minutes for 1,152 units on two cores (about 2.5 hours in all), so the arm was not run.
+
+### core/src/search/pack.rs · build_with (restate removed)
+
+- refers-to: core/src/search/pack.rs :: build_with
+- kind: removed-code
+- logged: v0.10.2 · 2026-10-30
+
+Removed: restating an owner rule that P0 already carries as a memory line in P2 (`RESTATE_WITHIN` 5, `RESTATE_MAX` 2). The review showed it raised R@4k from 0.871 to 0.912 with no change in R@4k+P0 (0.918 both ways): a metric movement, since the agent already had the rule in the prefix. Convention tasks went from 0.850 to 0.550 on R@4k, the other kinds did not move. Owner rules in P0 are now skipped in P2 whenever P0 is sent (a T1 pack has no P0, so there they still print). The `files:` line stays and does help (+0.061 on R@4k and on R@4k+P0), but it only lists paths: more candidate places to look, not content and not a better ranking. Identical memory records (one HASHOUT entry fans out to one record per anchor, with the same title and text) are shown once in a pack, keyed by `content_hash` over kind, authority, title and text.
+
+### core/src/eval.rs · select_half, clusters
+
+- refers-to: core/src/eval.rs :: select_half
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+The line-parity halves were not held out: gold is history ordered, so neighbours share files and commits, and parameters were chosen on all 147 tasks. `clusters` joins tasks that share any expected file, symbol or slot or the same 7-hex source commit (union-find, 49 clusters, largest 33), and `select_half` gives each whole cluster to the held-out half when the first byte of the SHA-256 of its smallest task id is odd. That is deterministic and cluster-separated, but unbalanced (114 tuning, 33 held-out, no convention or decline in held-out), and the gold set was written before tuning with some parameters picked on all tasks, so the held-out number is indicative only. Memory phrases are not link keys: owner rules are shared by many unrelated tasks.

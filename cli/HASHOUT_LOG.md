@@ -181,3 +181,27 @@ These moved out of main.rs with the new lifecycle commands. `serve` installs the
 - logged: v0.10.2 · 2026-10-30
 
 New `--half all|even|odd` (also `tuning`, `heldout`) filters the gold set by line parity before the run, so the tuning and held-out halves can be reported from the same command. Default is all.
+
+### cli/src/service_cmd.rs · stop, status, health
+
+- refers-to: cli/src/service_cmd.rs :: stop
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+A stale `service.json` (dead or reused pid, nothing or something else on its port) made `stop` wait 15 seconds and fail, and sent the stale token to whatever listened (checked with a throwaway listener on the recorded port: the old binary delivered the Authorization header and took 15 s; the new one sends nothing and exits 0 in 3 ms). `stop` now takes the service lock: if it can be taken no service runs and the stale file is removed. With the lock held it needs a live pid and `health`, which first sends a request without a token and requires the 401 `unauthorized` JSON that only formslot answers, then the authenticated health; only then it posts the shutdown and requires 202. `status` uses the same `health`, and doctor reports a stale file whose pid was reused as a warning when the lock is free. `serve` calls `lifecycle::drain` before it removes the discovery file.
+
+### cli/src/hook_cmd.rs · stdin_text
+
+- refers-to: cli/src/hook_cmd.rs :: stdin_text
+- kind: warning-context
+- logged: v0.10.2 · 2026-10-30
+
+`check` and `hook` read stdin to the end, so run by hand in a terminal they waited for ever. stdin is read only when it is not a terminal (`std::io::IsTerminal`); `main` answers `--help` and `-h` anywhere after the command before any command runs, so help never reads stdin. `add` was named in the review but does not read stdin (it errors at once without a path); `add --help` now prints the help.
+
+### cli/src/eval_cmd.rs · run
+
+- refers-to: cli/src/eval_cmd.rs :: run
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+`--half` is now `all|tuning|held-out` (`even` and `odd` are gone: line parity put neighbouring tasks, which share files and commits, in both halves). The split is by cluster; see core/src/eval.rs.

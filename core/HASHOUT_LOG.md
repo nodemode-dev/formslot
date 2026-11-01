@@ -1185,3 +1185,27 @@ The pattern is substrata `core/binres.py` (MIT, owner's; /home/claude/ref2/backe
 - logged: v0.10.2 · 2026-10-30
 
 Claude Code starts hooks with a minimal PATH on some systems, and a plugin or checkout used without the `formslot` launcher on PATH made every hook fail silently. When `formslot` is on PATH at install time the text stays `formslot` (portable between machines in a committed settings file); otherwise the resolved path of the running binary is written, which is `formslot-cli`, the program the launcher script runs. A committed file with an absolute path is machine specific; doctor reports a repository command that cannot be found. `is_ours` replaces the old prefix test so a second install over an absolute-path entry adds nothing; it reads the first word (quoted or not), takes its file name without `.exe`, and needs `check` or `hook` after it.
+
+### core/src/install.rs · launcher_word, first_word, ours_stale
+
+- refers-to: core/src/install.rs :: launcher_word
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+From the fresh-context review. Two defects. First, a formslot hook or `.mcp.json` entry whose program path was stale (the binary moved) counted as "already installed", so `doctor` said run install again and install said nothing to change; `ours_stale` now compares the entry's program with the current launcher and `merge_settings` and `merge_mcp` splice only that one JSON string (the arguments after the program are kept), and `verify` compares hooks with our own command strings normalised, so the guarantee that every other value is unchanged still holds. Second, double quotes let a POSIX shell expand `$`, backticks and backslashes in a path and a `"` in the path broke `first_word`, so a second install did not recognise the entry and appended duplicates (12 commands became 24 before the fix). `launcher_word` now single-quotes on POSIX with `'\''` for a quote and double-quotes only on Windows (where a path cannot hold a `"`); `first_word` is a small word parser (single quotes, double quotes with the POSIX escapes, backslash escapes outside quotes on POSIX only) that returns the decoded program and the rest of the command.
+
+### core/src/lifecycle.rs · exit_reason, drain
+
+- refers-to: core/src/lifecycle.rs :: exit_reason
+- kind: rationale
+- logged: v0.10.2 · 2026-10-30
+
+`GET /api/lease` joins `GET /api/health` as a request that is not activity (`formslot status` called it, so polling status kept an idle service alive; with a 4 second limit the service stayed up for 12 polls before and stopped at the fourth after). An open connection holds the idle clock, so a client that is still sending is not cut off by an idle stop, and an idle decision is confirmed after 500 ms so a request that arrives in the gap cancels it. `drain` waits up to 5 seconds for in-flight requests and open connections after the listener is closed and before `service.json` goes, so a request that was accepted gets its reply (an open half-sent connection made the stop take 5.4 seconds, a refused one is dropped at exit). http.rs reads the first byte under a 5 second limit before the 15 second read deadline starts, so a silent connection is answered 408 after 5 seconds instead of 15.
+
+### core/src/binres.rs · trusted, in_data_bin
+
+- refers-to: core/src/binres.rs :: in_data_bin
+- kind: warning-context
+- logged: v0.10.2 · 2026-10-30
+
+A program in `<data>/bin` is run by hooks and indexing, so a folder or file that another user can write is a way to run their code. On POSIX both the folder and the program must be owned by the current user (taken from the owner of `/proc/self`, else of the data folder, as the core has no libc dependency) and carry no group or world write bit, else the resolver skips them and falls through to PATH; `doctor` names the ignored file and checks the `bin/` mode. A path given in `FORMSLOT_<NAME>_BIN` is the owner's explicit choice and is not checked.

@@ -52,13 +52,71 @@ pub struct Gold {
     pub line: usize,
 }
 
-pub fn select_half(gold: Vec<Gold>, half: &str) -> crate::Result<Vec<Gold>> {
-    match half {
-        "all" => Ok(gold),
-        "even" | "tuning" => Ok(gold.into_iter().filter(|g| g.line % 2 == 0).collect()),
-        "odd" | "heldout" => Ok(gold.into_iter().filter(|g| g.line % 2 == 1).collect()),
-        other => Err(format!("--half is all, even (tuning) or odd (held out), not {other}")),
+fn source_commit(source: &str) -> Option<String> {
+    let rest = source.split("commit ").nth(1)?;
+    let hex: String = rest.chars().take_while(char::is_ascii_hexdigit).collect();
+    (hex.len() >= 7).then(|| hex[..7].to_ascii_lowercase())
+}
+
+fn find_root(parent: &mut [usize], mut at: usize) -> usize {
+    while parent[at] != at {
+        parent[at] = parent[parent[at]];
+        at = parent[at];
     }
+    at
+}
+
+pub fn clusters(gold: &[Gold]) -> Vec<Vec<usize>> {
+    let mut parent: Vec<usize> = (0..gold.len()).collect();
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for (i, g) in gold.iter().enumerate() {
+        let mut keys: Vec<String> = Vec::new();
+        keys.extend(g.expect.files.iter().map(|v| format!("file {v}")));
+        keys.extend(g.expect.symbols.iter().map(|v| format!("symbol {v}")));
+        keys.extend(g.expect.slots.iter().map(|v| format!("slot {v}")));
+        keys.extend(source_commit(&g.source).map(|c| format!("commit {c}")));
+        for key in keys {
+            match seen.get(&key) {
+                Some(&other) => {
+                    let (a, b) = (find_root(&mut parent, i), find_root(&mut parent, other));
+                    parent[a] = b;
+                }
+                None => {
+                    seen.insert(key, i);
+                }
+            }
+        }
+    }
+    let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for i in 0..gold.len() {
+        let root = find_root(&mut parent, i);
+        groups.entry(root).or_default().push(i);
+    }
+    groups.into_values().collect()
+}
+
+fn held_out(smallest_id: &str) -> bool {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(smallest_id.as_bytes())[0] & 1 == 1
+}
+
+pub fn select_half(gold: Vec<Gold>, half: &str) -> crate::Result<Vec<Gold>> {
+    let want = match half {
+        "all" => return Ok(gold),
+        "tuning" => false,
+        "held-out" | "heldout" => true,
+        other => return Err(format!("--half is all, tuning or held-out, not {other}")),
+    };
+    let mut keep = vec![false; gold.len()];
+    for cluster in clusters(&gold) {
+        let smallest = cluster.iter().map(|&i| gold[i].id.as_str()).min().unwrap_or_default();
+        if held_out(smallest) == want {
+            for i in cluster {
+                keep[i] = true;
+            }
+        }
+    }
+    Ok(gold.into_iter().zip(keep).filter_map(|(g, k)| k.then_some(g)).collect())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -12,8 +12,6 @@ use crate::git::Repo;
 pub const P0_MAP_TOKENS: usize = 650;
 pub const P0_RULES_TOKENS: usize = 350;
 pub const P1_SHARE_PERCENT: usize = 35;
-const RESTATE_WITHIN: usize = 5;
-const RESTATE_MAX: usize = 2;
 const FILE_AGGREGATE_HITS: usize = 60;
 const STYLE_KINDS: [&str; 4] = ["selector", "element_id", "style", "custom_property"];
 pub const ESTIMATOR: &str = "ceil(bytes / 3.6) for code and envelopes, ceil(bytes / 4) for prose";
@@ -467,17 +465,24 @@ pub fn build_with(
     }
     let mut memory_shown = 0;
     let mut header = false;
-    let mut restated = 0;
-    for (position, h) in found.hits.iter().enumerate().filter(|(_, h)| h.kind == "memory") {
+    let mut memory_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for h in found.hits.iter().filter(|h| h.kind == "memory") {
         if memory_shown >= 5 {
             break;
         }
         let Some(id) = h.id.parse::<i64>().ok() else { continue };
-        if rule_ids.contains(&id) {
-            if position >= RESTATE_WITHIN || restated >= RESTATE_MAX {
-                continue;
-            }
-            restated += 1;
+        if tier.with_prefix() && rule_ids.contains(&id) {
+            continue;
+        }
+        let key = conn
+            .query_row("SELECT kind, authority, title, text FROM memory_record WHERE id = ?1", params![id], |r| {
+                Ok(crate::memory::content_hash(&r.get::<_, String>(0)?, &r.get::<_, String>(1)?, None, &r.get::<_, String>(2)?, &r.get::<_, String>(3)?))
+            })
+            .ok();
+        if let Some(key) = key
+            && !memory_seen.insert(key)
+        {
+            continue;
         }
         let Some(line) = memory_line(conn, id) else { continue };
         if p0_sent + p1_sent + p2.tokens_with(&line, Kind::Prose) + 20 > budget {
