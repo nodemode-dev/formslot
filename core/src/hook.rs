@@ -21,7 +21,12 @@ const FORMMAP_TOKENS: usize = 1400;
 const PROMPT_CHARS: usize = 2800;
 const RULES_CHARS: usize = 2400;
 const REINDEX_GAP: u64 = 20;
-const STATE_DAYS: u64 = 7;
+const STATE_DAYS: u64 = 3;
+const STATE_READ_CAP: u64 = 262_144;
+const WARNS_CAP: usize = 64;
+const WRITTEN_CAP: usize = 200;
+const AUDITED_CAP: usize = 200;
+const KEY_CAP: usize = 400;
 const AUDIT_FILES: usize = 20;
 const AUDIT_LINES: usize = 5;
 const FILE_CAP: u64 = 400_000;
@@ -37,9 +42,30 @@ struct State {
     #[serde(default)]
     written: Vec<String>,
     #[serde(default)]
-    warned: Vec<String>,
+    warns: Vec<String>,
     #[serde(default)]
     audited: Vec<String>,
+}
+
+fn keep_last(list: &mut Vec<String>, cap: usize) {
+    list.retain(|k| k.len() <= KEY_CAP);
+    if list.len() > cap {
+        list.drain(..list.len() - cap);
+    }
+}
+
+fn input_digest(value: &Value) -> String {
+    let mut fields: std::collections::BTreeMap<String, Value> = std::collections::BTreeMap::new();
+    if let Some(map) = value.get("tool_input").and_then(Value::as_object) {
+        for (k, v) in map {
+            if k != "file_path" {
+                fields.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    let text = serde_json::to_string(&fields).unwrap_or_default();
+    let sum = <sha2::Sha256 as sha2::Digest>::digest(text.as_bytes());
+    sum.iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
 fn state_dir() -> PathBuf {
@@ -59,6 +85,7 @@ fn state_file(session: &str) -> Option<PathBuf> {
 
 fn load(session: &str) -> State {
     state_file(session)
+        .filter(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() <= STATE_READ_CAP))
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default()
@@ -127,6 +154,9 @@ fn update<R>(session: &str, change: impl FnOnce(&mut State) -> R) -> R {
     let _guard = lock(session);
     let mut state = load(session);
     let out = change(&mut state);
+    keep_last(&mut state.warns, WARNS_CAP);
+    keep_last(&mut state.written, WRITTEN_CAP);
+    keep_last(&mut state.audited, AUDITED_CAP);
     save(session, &state);
     out
 }
@@ -203,12 +233,19 @@ pub fn run_check(stdin: &str, arg_mode: Option<&str>) -> Option<String> {
         let Some(conn) = open()? else { return Ok(None) };
         let mut verdict = check::evaluate(&conn, &req, mode, started)?;
         if let Verdict::Warn { slots, .. } = &verdict {
-            let key = format!("{}|{}", req.path, slots.first().map(|s| s.id.as_str()).unwrap_or("unit"));
+            let key = format!(
+                "{}|{}|{}",
+                req.path,
+                slots.first().map(|s| s.id.as_str()).unwrap_or("unit"),
+                input_digest(&value)
+            );
             let seen = update(&req.session, |state| {
-                if state.warned.contains(&key) {
+                if let Some(at) = state.warns.iter().position(|k| *k == key) {
+                    let k = state.warns.remove(at);
+                    state.warns.push(k);
                     true
                 } else {
-                    state.warned.push(key.clone());
+                    state.warns.push(key.clone());
                     false
                 }
             });
@@ -216,6 +253,7 @@ pub fn run_check(stdin: &str, arg_mode: Option<&str>) -> Option<String> {
                 verdict = Verdict::Allow;
             }
         }
+        prune();
         match &verdict {
             Verdict::Allow => {}
             Verdict::Warn { slots, .. } => log::record(
