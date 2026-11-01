@@ -2,7 +2,7 @@
 
 Living log for `formslot-cli`. Source files stay comment-free; what they would have said lives here.
 
-Current build version: v0.5.0
+Current build version: v0.10.1
 Last updated: 2026-10-30 · Phase S5
 
 ## Org-navi-map

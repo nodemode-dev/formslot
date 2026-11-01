@@ -2,7 +2,7 @@
 
 Living log for search, the repo map and context packs (core/src/search/*, migration 009, cli/src/search_cmd.rs). Source files stay comment-free; what they would have said lives here. The core-wide log is core/HASHOUT_LOG.md.
 
-Current build version: v0.7.1
+Current build version: v0.10.1
 Last updated: 2026-10-30 · Phase S7 review
 
 ### review fixes (v0.7.1)

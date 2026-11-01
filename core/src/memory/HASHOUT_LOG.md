@@ -2,7 +2,7 @@
 
 Living log for the memory records (core/src/memory/*, migration 008, cli/src/memory_cmd.rs). Source files stay comment-free; what they would have said lives here. The core-wide log is core/HASHOUT_LOG.md.
 
-Current build version: v0.7.0
+Current build version: v0.10.1
 Last updated: 2026-10-30 · Phase S6
 
 ### core/src/corpus.rs · memory after an index run

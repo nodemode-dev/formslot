@@ -794,7 +794,7 @@ pub fn gates(report: &Report) -> Gates {
             let drop = 1.0 - f.tokens_mean / b.tokens_mean;
             let verdict = if drop >= GATE_TOKEN_DROP { "met" } else { "not met" };
             lines.push(format!(
-                "Input tokens down at least {:.0} percent: measured, {verdict}. The formslot pack averages {:.0} tokens per task against {:.0} for the baseline (top {BASELINE_READ} files read whole), a change of {:.1} percent. This compares what is sent, not whether the answer is right.",
+                "Input tokens down at least {:.0} percent: measured, {verdict}. The formslot pack averages {:.0} tokens per task against {:.0} for the baseline (top {BASELINE_READ} files read whole), a change of {:.1} percent. The baseline reads the top {BASELINE_READ} matching files whole, which is a generous upper bound on what an agent without formslot would send, not a measured agent run. This compares what is sent, not whether the answer is right.",
                 GATE_TOKEN_DROP * 100.0,
                 f.tokens_mean,
                 b.tokens_mean,
@@ -810,9 +810,9 @@ pub fn gates(report: &Report) -> Gates {
         Some(r) => {
             let verdict = if r >= GATE_RECALL { "met" } else { "not met" };
             let with_p0 = formslot.and_then(|f| f.budget_p0).map(pct).unwrap_or_else(|| "-".to_string());
-            let base = baseline.and_then(|b| b.budget).map(|v| format!("{} with its top {BASELINE_READ} files", pct(v))).unwrap_or_else(|| "not run".to_string());
+            let base = baseline.and_then(|b| b.budget).map(|v| format!("the baseline reaches {} with its top {BASELINE_READ} files", pct(v))).unwrap_or_else(|| "the baseline arm was not run".to_string());
             lines.push(format!(
-                "Recall@4k at least {GATE_RECALL:.2}: measured, {verdict}. {} of the gold tasks have an expected item in the {PACK_BUDGET}-token pack outside the stable prefix and the echoed task (with the prefix counted: {with_p0}); the baseline reaches {base}.",
+                "Recall@4k at least {GATE_RECALL:.2}: measured, {verdict}. {} of the gold tasks have an expected item in the {PACK_BUDGET}-token pack outside the stable prefix and the echoed task (with the prefix counted: {with_p0}); {base}.",
             pct(r)
             ));
         }

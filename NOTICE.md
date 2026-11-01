@@ -23,9 +23,37 @@ Crates added directly, with the versions in `Cargo.lock`. Each runs in the distr
 | tree-sitter-rust | 0.24.2 | MIT | distributed binary | Rust grammar (`core`) |
 | tree-sitter-css | 0.25.0 | MIT | distributed binary | CSS grammar (`core`) |
 | tree-sitter-html | 0.23.2 | MIT | distributed binary | HTML grammar (`core`) |
-| ureq | 3.5.0 | MIT OR Apache-2.0 | distributed binary | the `pack --count remote` HTTPS call, with rustls (`core`) |
+| ureq | 3.5.0 | MIT OR Apache-2.0 | distributed binary | the `pack --count remote` HTTPS call, with rustls and the platform certificate verifier, no redirects followed (`core`) |
 | keyring | 4.2.0 | MIT OR Apache-2.0 | distributed binary | the Anthropic key from the system password store (`core`) |
 | blake3 | 1.8.7 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception; used under Apache-2.0 | distributed binary | identity hashes for dedup (`core`) |
+
+The default binary also contains the transitive crates of ureq and keyring, with the versions in `Cargo.lock` and the licences from `cargo metadata`:
+
+| Crate | Version | Licence | Used for |
+| --- | --- | --- | --- |
+| ureq-proto | 0.6.5 | MIT OR Apache-2.0 | ureq's HTTP/1.1 protocol layer |
+| rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | TLS for ureq |
+| rustls-webpki | 0.103.16 | ISC | certificate path validation |
+| rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | certificate and key types |
+| rustls-platform-verifier | 0.7.1 | MIT OR Apache-2.0 | checks server certificates against the operating system's store |
+| rustls-native-certs | 0.8.5 | Apache-2.0 OR ISC OR MIT | reads the system root store on Linux and other Unix systems |
+| openssl-probe | 0.2.2 | MIT OR Apache-2.0 | finds the system certificate files on Linux |
+| ring | 0.17.14 | Apache-2.0 AND ISC | cryptography for rustls; parts derive from BoringSSL and OpenSSL, under ISC and the OpenSSL-compatible terms ring's licence file records |
+| untrusted | 0.9.0 | ISC | input parsing for ring and webpki |
+| subtle | 2.6.1 | BSD-3-Clause | constant-time comparisons |
+| webpki-roots | 1.0.11 | CDLA-Permissive-2.0 | the bundled Mozilla root certificate list |
+| zbus, zbus_macros, zbus_names | 5.19.0, 5.19.0, 4.3.5 | MIT | D-Bus client for the Linux Secret Service |
+| zvariant, zvariant_derive, zvariant_utils | 5.15.1, 5.15.1, 4.2.0 | MIT | D-Bus value encoding |
+| secret-service | 5.2.0 | MIT OR Apache-2.0 | Secret Service access |
+| zbus-secret-service-keyring-store | 1.0.1 | MIT OR Apache-2.0 | keyring store over the Secret Service |
+| keyring-core | 1.0.1 | MIT OR Apache-2.0 | keyring store interface |
+| apple-native-keyring-store, windows-native-keyring-store | 1.0.2, 1.1.0 | MIT OR Apache-2.0 | macOS and Windows password stores (those targets only) |
+| security-framework, security-framework-sys, core-foundation, core-foundation-sys | 3.7.0, 2.17.0, 0.10.1, 0.8.7 | MIT OR Apache-2.0 | macOS system bindings (macOS only) |
+| schannel | 0.1.30 | MIT | Windows certificate store (Windows only) |
+
+Their remaining transitive crates (the async runtime pieces async-*, event-listener, futures-*, polling, rustix, uuid, endi, enumflags2, ordered-stream, the aes, cbc, cipher, hkdf, hmac, sha2 0.11 and num-* helpers, base64 0.23, http, httparse, percent-encoding, utf8-zero, log, bytes, bitflags, hex, windows-sys and the windows_* target crates, and similar) are MIT, Apache-2.0, ISC, BSD-3-Clause, Zlib, Unlicense or MIT-0, alone or as a choice. Two list a copyleft option beside a permissive one (r-efi: MIT OR Apache-2.0 OR LGPL-2.1-or-later; constant_time_eq: CC0-1.0 OR MIT-0 OR Apache-2.0), and the permissive choice is the one used. unicode-ident is (MIT OR Apache-2.0) AND Unicode-3.0.
+
+The webpki-roots crate is the Mozilla CA Certificate Store as a Rust data file, licensed CDLA-Permissive-2.0 (Community Data License Agreement, Permissive, Version 2.0). Attribution: the root certificate list is derived from data published by the Mozilla Foundation (https://wiki.mozilla.org/CA) and is redistributed here under that licence, whose text is at https://cdla.dev/permissive-2-0/. The data is unmodified and carries no warranty. With the platform verifier selected, formslot checks `count_tokens` replies against the system store; the bundled list is compiled in and is not consulted by that call.
 
 ## Optional dense tier (cargo feature `dense`, off by default)
 

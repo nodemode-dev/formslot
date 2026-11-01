@@ -2,7 +2,7 @@
 
 Living log for the MCP server (core/src/mcp/*, cli/src/mcp_cmd.rs, the `POST /mcp` route). Source files stay comment-free; what they would have said lives here. The core-wide log is core/HASHOUT_LOG.md.
 
-Current build version: v0.9.0
+Current build version: v0.10.1
 Last updated: 2026-10-30 · Phase S8
 
 ### core/src/mcp/mod.rs · answer

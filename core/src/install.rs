@@ -154,7 +154,7 @@ fn verify(old: &str, new: &str, enable: bool) -> crate::Result<()> {
                 (Some(x), Some(y)) => y.len() >= x.len() && y[..x.len()] == x[..],
                 _ => false,
             },
-            "disabledMcpjsonServers" if enable => match (old_value.as_array(), new_value.as_array()) {
+            "disabledMcpjsonServers" if enable && old_value.is_array() => match (old_value.as_array(), new_value.as_array()) {
                 (Some(x), Some(y)) => {
                     let kept: Vec<&Value> = x.iter().filter(|v| v.as_str() != Some(SERVER)).collect();
                     kept.len() == y.len() && kept.iter().zip(y.iter()).all(|(k, v)| *k == v)

@@ -2,7 +2,7 @@
 
 Living log for the slots engine (core/src/slots/*, migration 006, cli/src/slot_cmd.rs, docs/slot.schema.json). Source files stay comment-free; what they would have said lives here. The core-wide log is core/HASHOUT_LOG.md.
 
-Current build version: v0.5.0
+Current build version: v0.10.1
 Last updated: 2026-10-30 · Phase S5
 
 ### core/src/slots/manifest.rs · empty hashes in a seed

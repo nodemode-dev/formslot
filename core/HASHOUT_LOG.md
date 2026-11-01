@@ -2,7 +2,7 @@
 
 Living log for `formslot-core`. Source files stay comment-free; what they would have said lives here.
 
-Current build version: v0.5.0
+Current build version: v0.10.1
 Last updated: 2026-10-30 · Phase S5
 
 ## Org-navi-map
@@ -1065,3 +1065,83 @@ Migration 011 is in every build, not only the dense one, because `PRAGMA user_ve
 - logged: v0.10.0 · 2026-10-30
 
 The gold set showed `search "colour row"` ranking ui.prefs-dialog above ui.control-rows, because the dialog slot listed `page-prefs.ts` and its `PagePrefsRows` export, which belong to the control-rows family. Both were taken out of the dialog slot and its description says the rows live in ui.control-rows; the Preferences pack still leads with ui.prefs-dialog.
+
+### core/src/install.rs · verify (disabledMcpjsonServers)
+
+- refers-to: core/src/install.rs :: verify
+- kind: bug-context
+- logged: v0.10.1 · 2026-10-30
+
+The `--enable` rule for `disabledMcpjsonServers` compares the old and new arrays after dropping the formslot entry. It applied to the key whatever its value type, so a string, null or object value, which the merge never touches, made `as_array()` fail and the whole merge was refused. The rule now applies only when the old value is an array; any other value falls to the plain equality check, which holds because nothing changed it.
+
+### core/src/count.rs · remote
+
+- refers-to: core/src/count.rs :: remote, core/Cargo.toml :: ureq
+- kind: rationale
+- logged: v0.10.1 · 2026-10-30
+
+Redirects are off (`max_redirects(0)`): the URL is fixed, and a followed redirect would carry the `x-api-key` header to wherever it pointed. Server certificates are checked against the operating system's store (ureq feature `platform-verifier`, `RootCerts::PlatformVerifier`) instead of the bundled Mozilla list, so a TLS-inspecting proxy or private CA that the owner already trusts system-wide works. The crates it adds (rustls-platform-verifier, rustls-native-certs, openssl-probe, and per-platform bindings) are permissive, checked on crates.io, and are listed in NOTICE.md. If the system store is empty or unreadable the request fails and the local estimate is kept, as for any other failure.
+
+### core/src/hook.rs · lock
+
+- refers-to: core/src/hook.rs :: lock, Guard
+- kind: rationale
+- logged: v0.10.1 · 2026-10-30
+
+The lock file now holds a nonce (process id and nanoseconds). The holder removes the file on drop only if it still reads back its own nonce, so a holder whose lock was broken cannot delete the next owner's lock. A stale lock (older than 5 seconds, tried once at the halfway attempt) is not removed in place: it is renamed to a unique name, and if the renamed file turns out not to be stale (a live lock was grabbed by mistake) it is linked back before the unique name is removed. This narrows the check-then-remove race to a window of two renames; it does not close it, and the worst outcome is still one lost `written` or `warned` entry. The 200 ms fall-through to an unlocked update is unchanged.
+
+### core/src/dense/fetch.rs · download
+
+- refers-to: core/src/dense/fetch.rs :: download
+- kind: rationale
+- logged: v0.10.1 · 2026-10-30
+
+`dense/` and `dense/gte-modernbert-base/` are set to mode 0700 on unix after `create_dir_all`, matching the contract. `dense/lib/` is created by the owner and is not touched.
+
+### core/src/check.rs · partial_string
+
+- refers-to: core/src/check.rs :: partial_string
+- kind: bug-context
+- logged: v0.10.1 · 2026-10-30
+
+A string cut off in an 8 MiB payload is trimmed until it decodes, with no fixed number of tries (an empty string always decodes). Each failed decode cuts at the position serde_json reports when the error is on the first line, backs off to the last backslash before that point, and steps to a character boundary, so a cut inside `\ud83d\ude0` is dropped whole and the text before it kept. Cutting at the reported position keeps the loop to a few passes even when the damage is early in a large string.
+
+### core/src/eval.rs · gates
+
+- refers-to: core/src/eval.rs :: gates
+- kind: warning-context
+- logged: v0.10.1 · 2026-10-30
+
+The recall gate line read "the baseline reaches not run" when the baseline arm was absent; it now says "the baseline arm was not run". The token gate line now states beside the number that the baseline reads the top 4 matching files whole, which is a generous upper bound on what an agent without formslot would send and not a measured agent run, so the large percentage is not read as a claim about real sessions.
+
+### core/src/mcp · numeric request ids
+
+- refers-to: core/src/mcp/mod.rs :: id handling, docs/CONTRACT.md
+- kind: warning-context
+- logged: v0.10.1 · 2026-10-30
+
+serde_json's arbitrary_precision keeps integers and plain decimals exact but writes a number given with an exponent in its canonical form (`1e2` returns as `1e+2`). The contract now says so. A client that sends such an id compares numerically in any JSON library, so no code change was made.
+
+### core/src/dense/embed.rs · locate_runtime (hardening note)
+
+- refers-to: core/src/dense/embed.rs :: locate_runtime, core/src/dense/fetch.rs :: download
+- kind: warning-context
+- logged: v0.10.1 · 2026-10-30
+
+The ONNX Runtime library is loaded from `ORT_DYLIB_PATH`, else the first `libonnxruntime*` in `<data>/dense/lib/`, else the system loader. Whoever can write the data folder can therefore run code on `dense build` or `search --dense`; that is the same trust as the data folder itself, which is 0700. `dense fetch` also finds `curl` on PATH. Both are documented and left as they are.
+
+### core/src/dense/vectors.rs · nearest (recall note)
+
+- refers-to: core/src/dense/vectors.rs :: nearest
+- kind: warning-context
+- logged: v0.10.1 · 2026-10-30
+
+The corpus filter is applied after the vec0 nearest-neighbour cut (k is the larger of four times the limit and the limit plus 50). With several corpora a scoped dense search can return fewer than the pool of 100. This affects recall only and is accepted until the dense tier gets a corpus column the MATCH can filter on.
+
+### core/src/check.rs · clean (lexical paths)
+
+- refers-to: core/src/check.rs :: clean
+- kind: warning-context
+- logged: v0.10.1 · 2026-10-30
+
+`clean` resolves `..` lexically, so `/repo/link/../x` becomes `/repo/x` although the operating system would resolve it through the symlink. The decline check is advisory and is documented as lexical; resolving symlinks would need file access for paths that may not exist yet, so it is left as it is.

@@ -135,17 +135,23 @@ fn partial_string(text: &str, key: &str) -> Option<String> {
             }
         }
         let mut raw = &body[..end.unwrap_or(body.len())];
-        for _ in 0..8 {
-            if let Ok(decoded) = serde_json::from_str::<String>(&format!("\"{raw}\"")) {
-                return Some(decoded);
-            }
+        loop {
+            let err = match serde_json::from_str::<String>(&format!("\"{raw}\"")) {
+                Ok(decoded) => return Some(decoded),
+                Err(e) => e,
+            };
             let mut cut = raw.len().saturating_sub(1);
+            if err.line() == 1 {
+                cut = cut.min(err.column().saturating_sub(2));
+            }
             while cut > 0 && !raw.is_char_boundary(cut) {
                 cut -= 1;
             }
+            if let Some(slash) = raw[..cut].rfind('\\') {
+                cut = slash;
+            }
             raw = &raw[..cut];
         }
-        return None;
     }
     None
 }

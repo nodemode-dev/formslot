@@ -93,6 +93,14 @@ fn verified(path: &Path, part: &Part) -> bool {
 pub fn download() -> crate::Result<Vec<String>> {
     let dir = model_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for private in [super::dense_dir(), dir.clone()] {
+            fs::set_permissions(&private, fs::Permissions::from_mode(0o700))
+                .map_err(|e| format!("cannot set mode on {}: {e}", private.display()))?;
+        }
+    }
     let mut notes = Vec::new();
     for part in &PARTS {
         let target = dir.join(part.file);

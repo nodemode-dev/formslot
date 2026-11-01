@@ -78,32 +78,44 @@ fn save(session: &str, state: &State) {
     }
 }
 
-struct Guard(Option<PathBuf>);
+struct Guard(Option<(PathBuf, String)>);
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        if let Some(path) = self.0.take() {
-            let _ = std::fs::remove_file(path);
+        if let Some((path, nonce)) = self.0.take() {
+            if std::fs::read_to_string(&path).is_ok_and(|held| held == nonce) {
+                let _ = std::fs::remove_file(path);
+            }
         }
     }
+}
+
+fn lock_is_stale(lock: &std::path::Path) -> bool {
+    std::fs::metadata(lock)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| SystemTime::now().duration_since(t).ok())
+        .is_some_and(|age| age > Duration::from_secs(LOCK_STALE_SECS))
 }
 
 fn lock(session: &str) -> Guard {
     let Some(path) = state_file(session) else { return Guard(None) };
     let _ = std::fs::create_dir_all(state_dir());
     let lock = path.with_extension("lock");
+    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let nonce = format!("{}-{nanos}", std::process::id());
     for attempt in 0..LOCK_TRIES {
-        if std::fs::OpenOptions::new().write(true).create_new(true).open(&lock).is_ok() {
-            return Guard(Some(lock));
+        if let Ok(mut file) = std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+            let _ = std::io::Write::write_all(&mut file, nonce.as_bytes());
+            return Guard(Some((lock, nonce)));
         }
-        if attempt == LOCK_TRIES / 2 {
-            let stale = std::fs::metadata(&lock)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| SystemTime::now().duration_since(t).ok())
-                .is_some_and(|age| age > Duration::from_secs(LOCK_STALE_SECS));
-            if stale {
-                let _ = std::fs::remove_file(&lock);
+        if attempt == LOCK_TRIES / 2 && lock_is_stale(&lock) {
+            let grave = lock.with_extension(format!("stale-{nonce}"));
+            if std::fs::rename(&lock, &grave).is_ok() {
+                if !lock_is_stale(&grave) {
+                    let _ = std::fs::hard_link(&grave, &lock);
+                }
+                let _ = std::fs::remove_file(&grave);
             }
         }
         std::thread::sleep(Duration::from_millis(LOCK_WAIT_MS));
