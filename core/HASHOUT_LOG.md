@@ -49,6 +49,8 @@ core/
     related.rs      the related band: similar and same_name pairs across corpora
     slots/          slot manifests, store, refresh, copies, lockfile, consumer drift (own log: src/slots/HASHOUT_LOG.md)
     memory/         memory records: ingest, declines, anchors, proposals, recall (own log: src/memory/HASHOUT_LOG.md)
+    search/         search, repo map and context packs (own log: src/search/HASHOUT_LOG.md)
+      009_search.sql        search_unit, unit_fts, unit_tri, memory_fts (same log)
 ```
 
 ## Table of contents

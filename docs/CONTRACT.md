@@ -105,6 +105,10 @@ The `formslot` launcher at the repository root builds `formslot-cli` on first us
 | `formslot memory list [--kind K] [--status S] [--corpus C] [--limit N] [--count] [--json]` | v0.7.0 |
 | `formslot recall <query> [--anchor path#symbol] [--kind K] [--corpus C] [--limit N] [--json]` | v0.7.0 |
 | `formslot remember --propose <text> [--anchor path#symbol] [--kind decision\|how-to] [--corpus C] [--json]` | v0.7.0 |
+| `formslot search <query> [--corpus C] [--limit N] [--json]` | v0.7.0 |
+| `formslot search rebuild [--corpus C]` | v0.7.0 |
+| `formslot map <corpus> [--tokens N]` and `formslot map <corpus> --formmap [--tokens N]` | v0.7.0 |
+| `formslot pack <task> [--corpus C] [--tokens N] [--tier T1\|T4\|T16] [--count local\|remote] [--json]` | v0.7.0 |
 
 Unit kinds (v0.4.0): `function`, `method`, `class`, `interface`, `type`, `enum`, `namespace`, `const` (an exported TypeScript constant), `constant` (an UPPER_CASE module-level Python name or a Rust const), `struct`, `trait`, `static`, `mod`, `tauri_command`, `custom_property`, `selector`, `element_id`, `script`, `style`. Edge kinds: `import`, `call`, `type`, `invoke`, `css_var`. Clone tiers: `T1` same text, `T2` same normalised tokens, `T3` near duplicate (estimated Jaccard at least 0.70), `related` (v0.5.0, stored apart from the clone tiers in `related_pair`: reason `similar`, estimated Jaccard from 0.40 to below 0.70 within one unit kind family, or reason `same_name`, the same normalised name in different files). Drift states: `identical`, `renamed`, `drifted`, `diverged`. A unit's stable id is `formslot <repo> <path>#<qualified>~<sig8>`.
 
@@ -130,6 +134,38 @@ A memory record has `kind`, `authority`, `status`, `title`, `text`, an optional 
 - `recall` ranks by term score over title, text and triggers (a declined record whose trigger phrase is in the query ranks first) and ends with a token estimate (characters / 4, rounded up). With `--anchor` the answer is held to 2,000 tokens, longest texts truncated first and marked.
 - `remember --propose` stores a `proposed` agent record and prints NOOP, MERGE, SUPERSEDE or ADD against what exists; it never deletes and never edits an owner record.
 
+## Search, map and pack (v0.7.0)
+
+- `search` fuses five ranked lists with Reciprocal Rank Fusion (k = 60): bm25 over unit name, split name, signature and body (`unit_fts`), a trigram index over name, qualified name and path (`unit_tri`), graph neighbours of the best hits over `edge`, memory records (`memory_fts`, active only; derived `hashout` and `tombstone` records count for less) and slots (canonical and proposed). Units in test paths are halved. A hit is `{kind: "unit" | "memory" | "slot", id, corpus, path, lines: [start, end] | null, score, why: [..]}`; a unit id is the stable id, a memory id is the record id, a slot id is the slot id (its `path` is the first file, `corpus` the origin repo).
+- The unit indexes (`search_unit`, `unit_fts`, `unit_tri`) are written by the index run and by the first search, map or pack on a corpus that has none; `search rebuild` drops and rebuilds them and the memory index. `memory_fts` follows `memory_record` through triggers.
+- `map` ranks units with a PageRank walk over the `edge` table (damping 0.85, 40 iterations, kinds weighted `call`, `type`, `invoke` 1.0, `import` 0.5, `css_var` 0.4, repeat edges by square root) and prints the largest prefix of the ranking that fits `--tokens` (default 1024), grouped by file, one line per file. `--formmap` writes the FORMMAP.md form: header, source file counts, owner rules, shared slots and the map, at most 148 lines and `--tokens` (default 4096). The output has no timestamp.
+- Token estimates are local: `ceil(bytes / 3.6)` for code and envelopes, `ceil(bytes / 4)` for prose. `--count remote` is reserved for the Messages `count_tokens` endpoint and needs `ANTHROPIC_API_KEY`; in v0.7.0 it prints a note and uses the local estimate. No command makes a network call.
+- `pack` answers with the prompt on stdout (the summary on stderr) or, with `--json`:
+
+```json
+{
+  "format": "formslot.pack",
+  "format_version": 1,
+  "task": "...",
+  "corpus": "formvis",
+  "commit": "40 hex",
+  "tier": "T1 | T4 | T16",
+  "budget": 4000,
+  "estimator": "ceil(bytes / 3.6) for code and envelopes, ceil(bytes / 4) for prose",
+  "p0_sha256": "64 hex",
+  "tokens": {"p0": n, "p1": n, "p2": n, "sent": n},
+  "parts": {"p0": Part, "p1": Part, "p2": Part},
+  "slots": [{"id", "status", "title", "files": [path], "why"}],
+  "hits": [Hit],
+  "prompt": "the parts that are sent, joined",
+  "millis": n
+}
+Part = {"included": bool, "tokens": n, "sha256": "64 hex", "text": "..."}
+```
+
+- `P0` is the stable prefix: the data notice, the corpus head, the owner rules (active `rule` records of authority `owner`, ordered by id, 350 tokens at most) and the repo map head (650 tokens). It carries no time and no per-call value, so it is byte-identical for one corpus head and one set of owner rules, whatever the task or tier, and `p0_sha256` is the SHA-256 of `parts.p0.text`. `P1` holds the matched slot cards (canonical and proposed, best match first) and matched unit locations. `P2` holds the task, matching memory records and the excerpts. Tier `T1` (about 1,000 tokens) sends `P2` only (`included: false` for `P0` and `P1`); `T4` (about 4,000) and `T16` (about 16,000) send all three; `--tokens` overrides the budget and picks the tier (up to 1,500 is T1, up to 8,000 is T4). `sent` never exceeds `budget`.
+- Every piece of code text in a pack is one excerpt envelope per line in `P2`, the envelope of "Later" below with `copy` derived from the file's SPDX licence: `allowed` (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, CC0-1.0, Unlicense, BSL-1.0), `notice` (CC-BY, MPL-2.0, LGPL) and `no_copy` (anything else, `unknown` included). The repo map and the unit locations are index lines, not excerpts.
+
 ## Later, fixed now so clients can plan
 
 These land in later phases; names and shapes are fixed here and change only with a revision line.
@@ -146,3 +182,4 @@ These land in later phases; names and shapes are fixed here and change only with
 - 1 · 2026-10-30 · v0.4.1, conformance: Rust constants are reported as `constant`, as this file always said (v0.4.0 reported them as `const`); `--limit 0` means no limit for clone groups too
 - 1 · 2026-10-30 · v0.5.0, additive: the related band (`related_pair`, reasons `similar` and `same_name`) and `dupes --related`; the slot manifest schema, the `slot` commands, `GET /api/slots` and `GET /api/slots/<id>`, the `slots.lock.json` format and the per-file drift states; no existing route, command or field changes
 - 1 · 2026-10-30 · v0.7.0, additive: memory records (`memory_record`, `memory_event`) and the `memory`, `recall` and `remember` commands with their kinds, authorities and statuses; no existing route, command or field changes
+- 1 · 2026-10-30 · v0.7.0, additive: search, retrieval and context packs (`search`, `map`, `pack`, `search rebuild`; tables `search_unit`, `unit_fts`, `unit_tri`, `memory_fts`; the pack JSON shape and P0/P1/P2 layout); no existing route, command or field changes
