@@ -60,9 +60,11 @@ impl Store {
         conn.busy_timeout(Duration::from_millis(5000))
             .map_err(sql_err)?;
         conn.execute_batch(
-            "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;",
+            "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; \
+             PRAGMA mmap_size = 268435456; PRAGMA cache_size = -65536; PRAGMA temp_store = MEMORY;",
         )
         .map_err(sql_err)?;
+        conn.set_prepared_statement_cache_capacity(64);
         let mut store = Store { conn };
         store.migrate()?;
         Ok(store)

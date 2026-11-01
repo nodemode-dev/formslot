@@ -270,3 +270,19 @@ Vocabulary-gap code misses, by a general change only. Index side: the full-text 
 - logged: v0.13.0 · 2026-10-30
 
 The idf used `total` over active records but `df` over the whole full-text table, which also holds stale, superseded and proposed rows, so df could exceed total and the log went negative, lowering the mass of common terms below zero. df is now counted over a join with `memory_record` where status is active, the same population as `total`, and idf is clamped at 0. A term found only in inactive records has df 0 and is skipped as before.
+
+### core/src/search/pack.rs · build_p0 (repo map body cache), unit_text
+
+- refers-to: core/src/search/pack.rs :: build_p0, MAP_BODY, unit_text
+- kind: rationale
+- logged: v0.14.0 · 2026-10-31
+
+Profiled before any change (warm run, formvis, one task): the P0 repo map was the largest single stage of `pack` at about 200 ms, because `map::rank_entries` rebuilds the whole graph and runs 40 pagerank iterations for every pack, and its result is the same for every task. The rendered map body is now kept in a thread-local map keyed by corpus id, `conn.total_changes()` and `PRAGMA data_version`, so a write on this connection or another one starts a fresh build; the text is byte-identical to the uncached one. A single CLI call still pays the build once. `unit_text` and the lexical statements use `prepare_cached`; rusqlite's `query_row` and `prepare` do not cache. Ranking code is untouched.
+
+### core/src/store.rs · open (read-path pragmas)
+
+- refers-to: core/src/store.rs :: Store::open
+- kind: rationale
+- logged: v0.14.0 · 2026-10-31
+
+`mmap_size` 256 MiB, `cache_size` 64 MiB and `temp_store` MEMORY are set on every connection, and the prepared statement cache holds 64 statements instead of 16 so the per-pool search statements and the memory statements all stay cached. None of these changes results. No covering index migration was added: the full-text and trigram stages were 2 to 7 ms warm, so there was nothing for an index to win.

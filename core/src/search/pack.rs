@@ -194,6 +194,10 @@ pub fn sha256_hex(text: &str) -> String {
     Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
 }
 
+thread_local! {
+    static MAP_BODY: std::cell::RefCell<HashMap<(i64, i64, i64), String>> = std::cell::RefCell::new(HashMap::new());
+}
+
 fn build_p0(conn: &Connection, target: &Target) -> crate::Result<(Part, Vec<i64>)> {
     let mut p = Part::default();
     p.push("# formslot context pack · P0 stable prefix\n", Kind::Prose);
@@ -237,8 +241,17 @@ fn build_p0(conn: &Connection, target: &Target) -> crate::Result<(Part, Vec<i64>
         p.push("- none recorded\n", Kind::Prose);
     }
     p.push("\n## Repo map\n", Kind::Prose);
-    let ranked = map::rank_entries(conn, target.id)?;
-    let (_, body) = map::fit(&ranked.entries, P0_MAP_TOKENS, usize::MAX);
+    let stamp = (target.id, conn.total_changes() as i64, conn.query_row("PRAGMA data_version", [], |r| r.get::<_, i64>(0)).unwrap_or(-1));
+    let cached = MAP_BODY.with(|c| c.borrow().get(&stamp).cloned());
+    let body = match cached {
+        Some(body) => body,
+        None => {
+            let ranked = map::rank_entries(conn, target.id)?;
+            let (_, body) = map::fit(&ranked.entries, P0_MAP_TOKENS, usize::MAX);
+            MAP_BODY.with(|c| c.borrow_mut().insert(stamp, body.clone()));
+            body
+        }
+    };
     p.push(&body, Kind::Code);
     Ok((p, shown_ids))
 }
@@ -279,12 +292,15 @@ struct UnitText {
 }
 
 fn unit_text(conn: &Connection, corpus_id: i64, hit: &Hit) -> Option<UnitText> {
-    conn.query_row(
-        "SELECT s.oid, s.start_byte, s.end_byte, s.start_line, f.licence FROM search_unit s \
-         JOIN file f ON f.corpus_id = s.corpus_id AND f.path = s.path \
-         WHERE s.corpus_id = ?1 AND s.path = ?2 AND s.qualified = ?3 ORDER BY s.idx LIMIT 1",
-        params![corpus_id, hit.path, hit.qualified],
-        |r| {
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT s.oid, s.start_byte, s.end_byte, s.start_line, f.licence FROM search_unit s \
+             JOIN file f ON f.corpus_id = s.corpus_id AND f.path = s.path \
+             WHERE s.corpus_id = ?1 AND s.path = ?2 AND s.qualified = ?3 ORDER BY s.idx LIMIT 1",
+        )
+        .ok()?;
+    let found = stmt
+        .query_row(params![corpus_id, hit.path, hit.qualified], |r| {
             Ok(UnitText {
                 oid: r.get(0)?,
                 start_byte: r.get::<_, i64>(1)? as usize,
@@ -292,9 +308,9 @@ fn unit_text(conn: &Connection, corpus_id: i64, hit: &Hit) -> Option<UnitText> {
                 start_line: r.get(3)?,
                 licence: r.get(4)?,
             })
-        },
-    )
-    .ok()
+        })
+        .ok();
+    found
 }
 
 fn envelope(target: &Target, path: &str, lines: [i64; 2], slot: Option<String>, licence: &str, text: String) -> Excerpt {
@@ -555,7 +571,7 @@ pub fn build_with(
         }
     }
     let p2_tokens = p2.tokens();
-    let sent = p0_sent + p1_sent + p2_tokens;
+    let sent =p0_sent + p1_sent + p2_tokens;
 
     let mut prompt = String::new();
     if tier.with_prefix() {
@@ -567,7 +583,7 @@ pub fn build_with(
     prompt.push_str(&p2.text);
 
     let p0_hash = sha256_hex(&p0.text);
-    let part = |included: bool, p: &Part| PartOut {
+    let part =|included: bool, p: &Part| PartOut {
         included,
         tokens: p.tokens(),
         sha256: sha256_hex(&p.text),

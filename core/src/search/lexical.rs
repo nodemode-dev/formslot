@@ -135,7 +135,7 @@ fn collect(
     limit: usize,
     label: &str,
 ) -> crate::Result<Vec<Hit>> {
-    let mut stmt = conn.prepare(sql_text).map_err(sql)?;
+    let mut stmt = conn.prepare_cached(sql_text).map_err(sql)?;
     let rows = stmt
         .query_map(args, |r| Ok((row_of(r)?, r.get::<_, f64>(8)?)))
         .map_err(sql)?;
@@ -203,13 +203,10 @@ pub fn neighbours(conn: &Connection, corpora: &[Target], seeds: &[Hit], limit: u
     let mut out = Vec::new();
     for (corpus, corpus_id, path, q, count, notes) in weights {
         let found = conn
-            .query_row(
-                &format!(
-                    "SELECT {UNIT_COLUMNS} FROM search_unit s WHERE s.corpus_id = ?1 AND s.path = ?2 AND s.qualified = ?3 ORDER BY s.idx LIMIT 1"
-                ),
-                params![corpus_id, path, q],
-                row_of,
-            )
+            .prepare_cached(&format!(
+                "SELECT {UNIT_COLUMNS} FROM search_unit s WHERE s.corpus_id = ?1 AND s.path = ?2 AND s.qualified = ?3 ORDER BY s.idx LIMIT 1"
+            ))
+            .and_then(|mut s| s.query_row(params![corpus_id, path, q], row_of))
             .ok();
         let Some(row) = found else { continue };
         let mut hit = unit_hit(&row, &corpus, String::new(), count as f64);
@@ -235,12 +232,11 @@ fn term_weights(conn: &Connection, query: &str) -> Vec<(String, f64)> {
     for term in query_terms(query) {
         let Some(m) = fts_or(std::slice::from_ref(&term)) else { continue };
         let df: f64 = conn
-            .query_row(
+            .prepare_cached(
                 "SELECT COUNT(*) FROM memory_fts JOIN memory_record r ON r.id = memory_fts.rowid \
                  WHERE memory_fts MATCH ?1 AND r.status = 'active'",
-                params![m],
-                |r| r.get::<_, i64>(0),
             )
+            .and_then(|mut s| s.query_row(params![m], |r| r.get::<_, i64>(0)))
             .map(|n| n as f64)
             .unwrap_or(0.0);
         if df == 0.0 {
@@ -264,7 +260,9 @@ pub fn covered(conn: &Connection, hits: Vec<Hit>, query: &str, share: f64) -> Ve
     hits.into_iter()
         .filter(|h| {
             let Ok(id) = h.id.parse::<i64>() else { return false };
-            let Ok(text) = conn.query_row("SELECT title || ' ' || text FROM memory_record WHERE id = ?1", params![id], |r| r.get::<_, String>(0))
+            let Ok(text) = conn
+                .prepare_cached("SELECT title || ' ' || text FROM memory_record WHERE id = ?1")
+                .and_then(|mut s| s.query_row(params![id], |r| r.get::<_, String>(0)))
             else {
                 return false;
             };
@@ -296,7 +294,7 @@ fn memory_filtered(conn: &Connection, scope: Option<i64>, query: &str, limit: us
         return Ok(Vec::new());
     };
     let mut stmt = conn
-        .prepare(&format!(
+        .prepare_cached(&format!(
             "SELECT r.id, r.kind, r.title, COALESCE(r.anchor, ''), bm25(memory_fts, 6.0, 2.0, 4.0) AS rank \
              FROM memory_fts JOIN memory_record r ON r.id = memory_fts.rowid \
              WHERE memory_fts MATCH ?1 AND r.status = 'active' AND (r.corpus_id IS NULL OR ?2 IS NULL OR r.corpus_id = ?2){filter} \
