@@ -8,19 +8,23 @@ fn sql(e: rusqlite::Error) -> String {
     format!("store: {e}")
 }
 
-pub fn stale(conn: &Connection, object_format: &str, oid: &str) -> crate::Result<bool> {
-    let facts: Option<i64> = conn
+pub fn stale(conn: &Connection, object_format: &str, oid: &str, path: &str) -> crate::Result<bool> {
+    let (facts, family): (Option<i64>, Option<String>) = conn
         .query_row(
-            "SELECT facts FROM blob WHERE object_format = ?1 AND oid = ?2",
+            "SELECT facts, facts_family FROM blob WHERE object_format = ?1 AND oid = ?2",
             params![object_format, oid],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(sql)?;
-    Ok(facts.unwrap_or(0) < VERSION)
+    if facts.unwrap_or(0) < VERSION {
+        return Ok(true);
+    }
+    Ok(family.is_none() && symbols::family(select::language(path)).is_some())
 }
 
 pub fn index_blob(conn: &Connection, object_format: &str, oid: &str, path: &str, text: &str) -> crate::Result<()> {
     let language = select::language(path);
+    let family = symbols::family(language);
     if let Some(found) = symbols::extract(language, path, text) {
         symbols::store(conn, object_format, oid, &found)?;
         let spans: Vec<dedup::Span> = found
@@ -36,8 +40,8 @@ pub fn index_blob(conn: &Connection, object_format: &str, oid: &str, path: &str,
         dedup::store(conn, object_format, oid, &dedup::fingerprint(language, text, &spans))?;
     }
     conn.execute(
-        "UPDATE blob SET facts = ?3 WHERE object_format = ?1 AND oid = ?2",
-        params![object_format, oid, VERSION],
+        "UPDATE blob SET facts = ?3, facts_family = ?4 WHERE object_format = ?1 AND oid = ?2",
+        params![object_format, oid, VERSION, family],
     )
     .map_err(sql)?;
     Ok(())

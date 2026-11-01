@@ -71,10 +71,5 @@ fn write(conn: &Connection, object_format: &str, oid: &str, x: &Extracted) -> cr
             .execute(params![object_format, oid, i.source, i.names.join(","), i.line as i64])
             .map_err(sql)?;
     }
-    conn.execute(
-        "UPDATE blob SET facts = 1 WHERE object_format = ?1 AND oid = ?2",
-        params![object_format, oid],
-    )
-    .map_err(sql)?;
     Ok(())
 }

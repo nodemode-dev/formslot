@@ -466,7 +466,7 @@ fn process_entry(
         counters.skipped += 1;
     } else if let Some(known) = blob_binary(tx, format, &entry.oid)? {
         binary = known;
-        if !known && facts::stale(tx, format, &entry.oid)? {
+        if !known && facts::stale(tx, format, &entry.oid, &entry.path)? {
             match reader.read(&entry.oid)? {
                 Some(data) => {
                     counters.read += 1;
@@ -637,8 +637,13 @@ fn index(
                 }
                 let stored: bool = tx
                     .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM blob WHERE object_format = ?1 AND oid = ?2 AND (is_binary = 1 OR facts >= ?3))",
-                        params![format, entry.oid, facts::VERSION],
+                        "SELECT EXISTS(SELECT 1 FROM blob WHERE object_format = ?1 AND oid = ?2 AND (is_binary = 1 OR (facts >= ?3 AND (facts_family IS NOT NULL OR ?4 = 0))))",
+                        params![
+                            format,
+                            entry.oid,
+                            facts::VERSION,
+                            crate::symbols::family(select::language(&entry.path)).is_some()
+                        ],
                         |row| row.get(0),
                     )
                     .map_err(sql)?;
@@ -697,7 +702,10 @@ fn index(
     .map_err(sql)?;
     refresh_roles(&tx, &ctx, &format, corpus_id)?;
     refresh_licences(&tx, &format, corpus_id)?;
-    facts::link(&tx, corpus_id)?;
+    let unchanged = prior_head.as_deref() == Some(commit.as_str()) && counters.read == 0 && gone.is_empty();
+    if !unchanged {
+        facts::link(&tx, corpus_id)?;
+    }
     tx.execute(
         "DELETE FROM scan_finding WHERE corpus_id = ?1",
         params![corpus_id],
