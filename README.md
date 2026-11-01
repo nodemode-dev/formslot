@@ -3,14 +3,14 @@
 <p align="center"><b>The Form family's memory for coding agents: what is already built, where it lives, and the rules it follows, served in as few tokens as the task needs.</b></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.2.1-f97316" alt="version v0.2.1" />
+  <img src="https://img.shields.io/badge/version-v0.4.0-f97316" alt="version v0.4.0" />
   <img src="https://img.shields.io/badge/status-building-8b5cf6" alt="status building" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-555555" alt="license GPL 3.0" />
 </p>
 
 formslot indexes every Form app's repository at exact commits into one deduplicated store of symbols, canonical slots (reusable components and features with their provenance and copies) and owner memory (rules, decisions, declined approaches). Agents reach it over MCP and Claude Code hooks, so they find and reuse what exists instead of re-reading or re-writing it. Its window is subform, the family's developer workbench.
 
-**Status:** building. Phases S1 and S2 have landed: the service on 127.0.0.1 with its discovery file and access checks, and indexing of git repositories at a commit (file manifest, languages, roles, licences, secret findings, incremental re-index). Symbols, dedup, slots, memory and the MCP server arrive in later phases; the plan of record ships in the planning sidecar zip. The contract clients build against is `docs/CONTRACT.md`.
+**Status:** building. Phases S1 to S4 have landed: the service on 127.0.0.1 with its discovery file and access checks; indexing of git repositories at a commit (file manifest, languages, roles, licences, secret findings, incremental re-index); symbols and a per-repository graph from tree-sitter (TypeScript, Python, Rust, CSS, HTML); and duplicate detection in three tiers across repositories, with drift between two. Slots, memory and the MCP server arrive in later phases; the plan of record ships in the planning sidecar zip. The contract clients build against is `docs/CONTRACT.md`.
 
 **Stack:** Rust (`formslot-core`, `formslot-cli`), SQLite bundled through rusqlite, the system git. Rust 1.90 or later.
 
@@ -20,6 +20,10 @@ formslot indexes every Form app's repository at exact commits into one deduplica
 ./formslot_oc_install                 # checks git and cargo, builds the release binary
 ./formslot add ~/path/to/a/form/repo  # index it at HEAD
 ./formslot stats <name>               # files, lines and bytes by language, roles, licences
+./formslot symbols <name> --count     # extracted units
+./formslot refs <name> revealApp      # who uses a symbol
+./formslot dupes <name>               # clone groups and near duplicates
+./formslot dupes --across <a> <b>     # code shared between two repositories
 ./formslot serve                      # the service on 127.0.0.1:5645
 ./formslot status
 ```
