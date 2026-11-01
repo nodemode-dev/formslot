@@ -70,7 +70,24 @@ fn file_filter(query: &str) -> Option<String> {
         .split('&')
         .filter_map(|pair| pair.split_once('='))
         .find(|(k, _)| *k == "file")
-        .map(|(_, v)| v.replace("%2F", "/").replace("%2f", "/"))
+        .map(|(_, v)| percent_decode(v))
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() && bytes[i + 1].is_ascii_hexdigit() && bytes[i + 2].is_ascii_hexdigit() {
+            let pair = &text[i + 1..i + 3];
+            out.push(u8::from_str_radix(pair, 16).unwrap_or(b'%'));
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 pub fn source(id: &str, query: &str) -> Reply {

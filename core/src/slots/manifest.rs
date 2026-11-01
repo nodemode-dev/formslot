@@ -62,7 +62,7 @@ pub fn safe_relative(path: &str) -> bool {
     !path.is_empty()
         && !path.starts_with('/')
         && !path.contains('\\')
-        && !path.contains('\0')
+        && !path.chars().any(char::is_control)
         && !path.split('/').any(|part| part.is_empty() || part == ".." || part == ".")
         && !(path.len() >= 2 && path.as_bytes()[1] == b':')
 }

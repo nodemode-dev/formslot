@@ -251,7 +251,7 @@ fn term_weights(conn: &Connection, query: &str) -> Vec<(String, f64)> {
     out
 }
 
-type WeightKey = (String, String, i64, i64, i64, String);
+type WeightKey = (String, String, i64, i64, i64, String, i64);
 
 thread_local! {
     static WEIGHTS: std::cell::RefCell<Option<(WeightKey, Vec<(String, f64)>)>> = const { std::cell::RefCell::new(None) };
@@ -259,13 +259,18 @@ thread_local! {
 
 fn weights_key(conn: &Connection, query: &str) -> Option<WeightKey> {
     let path = conn.path().map(str::to_string).filter(|p| !p.is_empty())?;
-    let (all, active, top, stamp) = conn
+    let (all, active, top, stamp, mass) = conn
         .prepare_cached(
-            "SELECT COUNT(*), COALESCE(SUM(status = 'active'), 0), COALESCE(MAX(id), 0), COALESCE(MAX(updated_at), '') FROM memory_record",
+            "SELECT COUNT(*), COALESCE(SUM(status = 'active'), 0), COALESCE(MAX(id), 0), COALESCE(MAX(updated_at), ''), \
+             COALESCE(SUM(id * (status = 'active')), 0) FROM memory_record",
         )
-        .and_then(|mut s| s.query_row([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?))))
+        .and_then(|mut s| {
+            s.query_row([], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?, r.get::<_, i64>(4)?))
+            })
+        })
         .ok()?;
-    Some((path, query.to_string(), all, active, top, stamp))
+    Some((path, query.to_string(), all, active, top, stamp, mass))
 }
 
 fn weights_once(conn: &Connection, query: &str) -> Vec<(String, f64)> {

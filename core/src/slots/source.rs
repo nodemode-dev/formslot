@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -8,6 +9,16 @@ use crate::git::Repo;
 use crate::redact;
 use crate::search;
 use crate::search::pack::copy_verdict;
+
+const MAX_BLOB: u64 = 4 * 1024 * 1024;
+
+fn strictness(verdict: &str) -> u8 {
+    match verdict {
+        "allowed" => 0,
+        "notice" => 1,
+        _ => 2,
+    }
+}
 
 pub const FILE_CAP: usize = 64 * 1024;
 pub const TOTAL_CAP: usize = 256 * 1024;
@@ -66,6 +77,12 @@ pub fn read(conn: &Connection, id: &str, only: Option<&str>, caps: Caps) -> crat
     let Some(row) = storage::get(conn, id)? else {
         return Ok(None);
     };
+    if row.status != "canonical" && row.status != "proposed" {
+        return Err(format!(
+            "Slot {id} is {}; formslot gives source only for canonical or proposed slots. slot_get shows why and what replaced it",
+            row.status
+        ));
+    }
     let slot = &row.manifest;
     let files = manifest::files_of(slot);
     if files.is_empty() {
@@ -94,9 +111,25 @@ pub fn read(conn: &Connection, id: &str, only: Option<&str>, caps: Caps) -> crat
     };
     let pinned = manifest::text_at(slot, &["origin", "commit"]).filter(|c| !c.is_empty());
     let commit = pinned.unwrap_or(target.head.as_str()).to_string();
+    if commit.is_empty() {
+        return Err(format!("The origin repository of slot {id} ({}) is not indexed yet and the slot has no pinned commit; run formslot add or formslot reindex {}", target.name, target.name));
+    }
+    if commit.len() < 7 || commit.len() > 64 || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(format!("Slot {id} has a commit that is not a hexadecimal object name: {}", commit.chars().take(80).collect::<String>()));
+    }
     let repo = Repo::open(Path::new(&target.path)).map_err(|e| format!("Cannot open the {} checkout: {e}", target.name))?;
+    let tree: HashMap<String, (String, u64)> = repo
+        .ls_tree(&commit)
+        .map_err(|e| format!("Commit {} is not in the {} checkout ({e}); run formslot reindex {}", &commit[..commit.len().min(12)], target.name, target.name))?
+        .into_iter()
+        .map(|e| (e.path, (e.oid, e.size)))
+        .collect();
     let mut reader = repo.blob_reader()?;
     let slot_licence = manifest::text_at(slot, &["license"]).or_else(|| manifest::text_at(slot, &["licence"])).unwrap_or("").to_string();
+    let canonical = row.status == "canonical";
+    let count = |sql: &str, a: &dyn rusqlite::ToSql, b: &dyn rusqlite::ToSql| -> i64 {
+        conn.query_row(sql, params![a, b], |r| r.get(0)).unwrap_or(0)
+    };
     let mut remaining = caps.total;
     let mut out_files: Vec<Value> = Vec::new();
     let mut omitted: Vec<Value> = Vec::new();
@@ -105,35 +138,74 @@ pub fn read(conn: &Connection, id: &str, only: Option<&str>, caps: Caps) -> crat
         if !manifest::safe_relative(&f.path) {
             return Err(format!("Slot {id} lists an unsafe path: {}", f.path));
         }
-        let bytes = reader
-            .read(&format!("{commit}:{}", f.path))?
-            .ok_or_else(|| format!("{} is not in {} at {}; the slot's pinned commit may not be in the checkout, run formslot reindex {}", f.path, target.name, &commit[..commit.len().min(12)], target.name))?;
-        let licence = if slot_licence.is_empty() {
-            conn.query_row("SELECT licence FROM file WHERE corpus_id = ?1 AND path = ?2", params![target.id, f.path], |r| r.get::<_, String>(0))
-                .optional()
-                .map_err(|e| format!("slot source: {e}"))?
-                .unwrap_or_else(|| "unknown".to_string())
-        } else {
-            slot_licence.clone()
+        let Some((oid, size)) = tree.get(&f.path).cloned() else {
+            return Err(format!("{} is not in {} at {}; the slot's pinned commit may not be in the checkout, run formslot reindex {}", f.path, target.name, &commit[..commit.len().min(12)], target.name));
         };
-        let matches = !f.sha256.is_empty() && manifest::hash_text(&bytes).0 == f.sha256;
-        let binary = bytes.contains(&0);
+        let detected: Option<String> = conn
+            .query_row("SELECT licence FROM file WHERE corpus_id = ?1 AND path = ?2", params![target.id, f.path], |r| r.get::<_, String>(0))
+            .optional()
+            .map_err(|e| format!("slot source: {e}"))?;
+        let indexed = detected.is_some();
+        let detected = detected.filter(|d| !d.is_empty() && d != "unknown");
+        let (licence, verdict) = match (slot_licence.is_empty(), detected) {
+            (true, None) => ("unknown".to_string(), "no_copy"),
+            (true, Some(d)) => (d.clone(), copy_verdict(&d)),
+            (false, None) => (slot_licence.clone(), copy_verdict(&slot_licence)),
+            (false, Some(d)) => {
+                if canonical || strictness(copy_verdict(&d)) <= strictness(copy_verdict(&slot_licence)) {
+                    (slot_licence.clone(), copy_verdict(&slot_licence))
+                } else {
+                    (d.clone(), copy_verdict(&d))
+                }
+            }
+        };
         let mut entry = json!({
             "kind": "formslot.excerpt",
             "source": { "repo": target.name, "path": f.path, "commit": commit, "lines": [1, 0] },
             "slot": id,
             "licence": licence,
-            "copy": copy_verdict(&licence),
+            "copy": verdict,
             "role": f.role,
             "port": f.port,
             "target": f.target,
-            "bytes": bytes.len(),
-            "matchesManifest": matches,
-            "binary": binary,
+            "bytes": size,
+            "matchesManifest": false,
+            "binary": false,
+            "withheld": false,
             "redactions": 0,
             "truncated": false,
             "text": "",
         });
+        let withheld = if !indexed {
+            Some("the file is not in the indexed file list of its repository")
+        } else if count("SELECT COUNT(*) FROM scan_finding WHERE corpus_id = ?1 AND path = ?2", &target.id, &f.path) > 0 {
+            Some("the secret scan flagged this file")
+        } else if count("SELECT COUNT(*) FROM blob WHERE object_format = ?1 AND oid = ?2", &target.format, &oid) == 0 {
+            Some("this version of the file was never scanned; run formslot reindex")
+        } else if count("SELECT COUNT(*) FROM blob_finding WHERE object_format = ?1 AND oid = ?2", &target.format, &oid) > 0 {
+            Some("the secret scan flagged this version of the file")
+        } else {
+            None
+        };
+        if let Some(reason) = withheld {
+            entry["withheld"] = json!(true);
+            entry["note"] = json!(format!("withheld: {reason}; text not returned"));
+            any_cut = true;
+            out_files.push(entry);
+            continue;
+        }
+        if size > MAX_BLOB {
+            omitted.push(json!({ "path": f.path, "bytes": size, "reason": "over 4 MiB" }));
+            any_cut = true;
+            continue;
+        }
+        let bytes = reader
+            .read(&oid)?
+            .ok_or_else(|| format!("{} could not be read from {} at {}; run formslot reindex {}", f.path, target.name, &commit[..commit.len().min(12)], target.name))?;
+        entry["bytes"] = json!(bytes.len());
+        entry["matchesManifest"] = json!(!f.sha256.is_empty() && manifest::hash_text(&bytes).0 == f.sha256);
+        let binary = bytes.contains(&0);
+        entry["binary"] = json!(binary);
         if binary {
             entry["note"] = json!("binary file, text not returned");
             out_files.push(entry);

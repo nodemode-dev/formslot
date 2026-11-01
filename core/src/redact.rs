@@ -8,8 +8,9 @@ const SHORTEST_KNOWN: usize = 8;
 
 static KNOWN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-const SHAPES: [&str; 12] = [
+const SHAPES: [&str; 13] = [
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*",
     r"\bfmd_[A-Za-z0-9_\-]{16,}",
     r"\bsk-ant-[A-Za-z0-9_\-]{20,}",
     r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{32,}",
