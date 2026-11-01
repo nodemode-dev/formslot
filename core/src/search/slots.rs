@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 use rusqlite::Connection;
 use serde_json::Value;
@@ -57,7 +60,48 @@ fn add(tf: &mut HashMap<String, f64>, len: &mut f64, text: &str, weight: f64) {
     }
 }
 
-fn docs(conn: &Connection) -> crate::Result<Vec<Doc>> {
+type DocsKey = (String, i64, String, u64);
+
+thread_local! {
+    static DOCS: std::cell::RefCell<Option<(DocsKey, Rc<Vec<Doc>>)>> = const { std::cell::RefCell::new(None) };
+}
+
+fn docs_key(conn: &Connection) -> Option<DocsKey> {
+    let path = conn.path().map(str::to_string).filter(|p| !p.is_empty())?;
+    let mut stmt = conn
+        .prepare_cached("SELECT id, status, version, content_hash, updated_at FROM slot ORDER BY id")
+        .ok()?;
+    let mut rows = stmt.query([]).ok()?;
+    let mut hasher = DefaultHasher::new();
+    let mut count = 0i64;
+    let mut stamp = String::new();
+    while let Some(r) = rows.next().ok()? {
+        for i in 0..5 {
+            r.get::<_, String>(i).ok()?.hash(&mut hasher);
+        }
+        let at: String = r.get(4).ok()?;
+        if at > stamp {
+            stamp = at;
+        }
+        count += 1;
+    }
+    Some((path, count, stamp, hasher.finish()))
+}
+
+fn docs(conn: &Connection) -> crate::Result<Rc<Vec<Doc>>> {
+    let Some(key) = docs_key(conn) else {
+        return Ok(Rc::new(build_docs(conn)?));
+    };
+    let hit = DOCS.with(|c| c.borrow().as_ref().filter(|e| e.0 == key).map(|e| e.1.clone()));
+    if let Some(found) = hit {
+        return Ok(found);
+    }
+    let fresh = Rc::new(build_docs(conn)?);
+    DOCS.with(|c| *c.borrow_mut() = Some((key, fresh.clone())));
+    Ok(fresh)
+}
+
+fn build_docs(conn: &Connection) -> crate::Result<Vec<Doc>> {
     let mut out = Vec::new();
     for row in storage::list(conn, None)? {
         if row.status != "canonical" && row.status != "proposed" {
@@ -112,7 +156,7 @@ fn docs(conn: &Connection) -> crate::Result<Vec<Doc>> {
 }
 
 pub fn all(conn: &Connection) -> crate::Result<Vec<Match>> {
-    Ok(docs(conn)?.into_iter().map(|d| d.m).collect())
+    Ok(docs(conn)?.iter().map(|d| d.m.clone()).collect())
 }
 
 pub fn rank(conn: &Connection, query: &str, units: &[Hit], deep: &[Hit], corpora: &[Target]) -> crate::Result<Vec<Match>> {
