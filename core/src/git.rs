@@ -42,6 +42,16 @@ fn base_command(root: &Path) -> Command {
     cmd
 }
 
+pub fn without_credentials(url: &str) -> String {
+    let Some(scheme_end) = url.find("://") else { return url.to_string() };
+    let rest = &url[scheme_end + 3..];
+    let authority_end = rest.find('/').unwrap_or(rest.len());
+    match rest[..authority_end].rfind('@') {
+        Some(at) => format!("{}{}", &url[..scheme_end + 3], &rest[at + 1..]),
+        None => url.to_string(),
+    }
+}
+
 fn run_in(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let out = base_command(root)
         .args(args)
@@ -120,7 +130,7 @@ impl Repo {
             return None;
         }
         let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if url.is_empty() { None } else { Some(url) }
+        if url.is_empty() { None } else { Some(without_credentials(&url)) }
     }
 
     pub fn ls_tree(&self, commit: &str) -> Result<Vec<Entry>, String> {
