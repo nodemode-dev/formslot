@@ -3,7 +3,7 @@
 <p align="center"><b>The Form family's memory for coding agents: what is already built, where it lives, and the rules it follows, served in as few tokens as the task needs.</b></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.7.1-f97316" alt="version v0.7.1" />
+  <img src="https://img.shields.io/badge/version-v0.9.0-f97316" alt="version v0.9.0" />
   <img src="https://img.shields.io/badge/status-building-8b5cf6" alt="status building" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-555555" alt="license GPL 3.0" />
 </p>
