@@ -24,6 +24,9 @@ pub fn route(req: &Request) -> Reply {
             };
             let rev = body.get("ref").and_then(Value::as_str).unwrap_or("HEAD").to_string();
             let path = PathBuf::from(path);
+            if !path.is_absolute() {
+                return Reply::error(400, "bad_request", "The \"path\" must be absolute.");
+            }
             indexing(|store| {
                 let (found, run) = corpus::add(store, &path, &rev)?;
                 Ok(json!({ "corpus": found, "index": run }))

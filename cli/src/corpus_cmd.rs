@@ -9,6 +9,16 @@ fn option(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
 }
 
+fn missing_value(args: &[String]) -> Option<String> {
+    ["--ref", "--role", "--language", "--family-json"].iter().find_map(|name| {
+        let at = args.iter().position(|a| a == name)?;
+        match args.get(at + 1) {
+            Some(value) if !value.starts_with("--") => None,
+            _ => Some(format!("{name} needs a value")),
+        }
+    })
+}
+
 fn flag(args: &[String], name: &str) -> bool {
     args.iter().any(|a| a == name)
 }
@@ -55,6 +65,9 @@ fn report(found: &Corpus, run: &IndexRun) {
 }
 
 pub fn add(args: &[String]) -> ExitCode {
+    if let Some(problem) = missing_value(args) {
+        return fail(problem);
+    }
     let Some(path) = positional(args) else {
         return fail("add needs a path: formslot add <path> [--ref <rev>]".into());
     };
@@ -70,6 +83,9 @@ pub fn add(args: &[String]) -> ExitCode {
 }
 
 pub fn reindex(args: &[String]) -> ExitCode {
+    if let Some(problem) = missing_value(args) {
+        return fail(problem);
+    }
     let Some(name) = positional(args) else {
         return fail("reindex needs a corpus name: formslot reindex <name> [--ref <rev>]".into());
     };
@@ -121,6 +137,9 @@ pub fn stats(args: &[String]) -> ExitCode {
 }
 
 pub fn files(args: &[String]) -> ExitCode {
+    if let Some(problem) = missing_value(args) {
+        return fail(problem);
+    }
     let Some(name) = positional(args) else {
         return fail("files needs a corpus name: formslot files <name> [--role <role>] [--language <lang>]".into());
     };
@@ -144,6 +163,9 @@ pub fn files(args: &[String]) -> ExitCode {
 }
 
 pub fn family(args: &[String]) -> ExitCode {
+    if let Some(problem) = missing_value(args) {
+        return fail(problem);
+    }
     let Some(source) = option(args, "--family-json") else {
         return fail("family needs its source: formslot family --family-json <formMCP core/data/family.json> [--check]".into());
     };
