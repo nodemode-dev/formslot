@@ -69,7 +69,7 @@ thread_local! {
 fn docs_key(conn: &Connection) -> Option<DocsKey> {
     let path = conn.path().map(str::to_string).filter(|p| !p.is_empty())?;
     let mut stmt = conn
-        .prepare_cached("SELECT id, status, version, content_hash, updated_at FROM slot ORDER BY id")
+        .prepare_cached("SELECT id, status, version, content_hash, updated_at, length(manifest) FROM slot ORDER BY id")
         .ok()?;
     let mut rows = stmt.query([]).ok()?;
     let mut hasher = DefaultHasher::new();
@@ -79,6 +79,7 @@ fn docs_key(conn: &Connection) -> Option<DocsKey> {
         for i in 0..5 {
             r.get::<_, String>(i).ok()?.hash(&mut hasher);
         }
+        r.get::<_, i64>(5).ok()?.hash(&mut hasher);
         let at: String = r.get(4).ok()?;
         if at > stamp {
             stamp = at;
