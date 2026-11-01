@@ -71,7 +71,12 @@ pub fn run(args: &[String]) -> ExitCode {
         Err(e) => return fail(e),
     };
     let started = Instant::now();
-    let hits = match search::run(&mut store, &query, option(args, "--corpus").as_deref(), limit) {
+    let found = if flag(args, "--dense") {
+        crate::dense_cmd::search(&mut store, &query, option(args, "--corpus").as_deref(), limit)
+    } else {
+        search::run(&mut store, &query, option(args, "--corpus").as_deref(), limit)
+    };
+    let hits = match found {
         Ok(h) => h,
         Err(e) => return fail(e),
     };

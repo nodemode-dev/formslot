@@ -14,6 +14,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/008_memory.sql"),
     include_str!("migrations/009_search.sql"),
     include_str!("migrations/010_memory_owner_guard.sql"),
+    include_str!("migrations/011_dense.sql"),
 ];
 
 pub struct Store {
@@ -53,6 +54,8 @@ fn prepare_file(path: &Path) -> Result<(), String> {
 impl Store {
     pub fn open(path: &Path) -> crate::Result<Store> {
         prepare_file(path)?;
+        #[cfg(feature = "dense")]
+        crate::dense::register();
         let conn = Connection::open(path).map_err(sql_err)?;
         conn.busy_timeout(Duration::from_millis(5000))
             .map_err(sql_err)?;

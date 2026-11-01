@@ -166,6 +166,16 @@ pub fn fuse_weighted(lists: Vec<(f64, Vec<Hit>)>) -> Vec<Hit> {
 }
 
 pub fn retrieve(conn: &Connection, corpora: &[Target], scope: Option<i64>, query: &str) -> crate::Result<Retrieval> {
+    retrieve_with(conn, corpora, scope, query, Vec::new())
+}
+
+pub fn retrieve_with(
+    conn: &Connection,
+    corpora: &[Target],
+    scope: Option<i64>,
+    query: &str,
+    extra: Vec<(f64, Vec<Hit>)>,
+) -> crate::Result<Retrieval> {
     let lexical = lexical::lexical(conn, corpora, scope, query, POOL_LEXICAL)?;
     let trigram = lexical::trigram(conn, corpora, scope, query, POOL_TRIGRAM)?;
     let seeds: Vec<Hit> = fuse(vec![lexical.clone(), trigram.clone()]).into_iter().take(GRAPH_SEEDS).collect();
@@ -176,14 +186,16 @@ pub fn retrieve(conn: &Connection, corpora: &[Target], scope: Option<i64>, query
     let pool: Vec<Hit> = fuse(vec![lexical.clone(), trigram.clone()]).into_iter().take(SLOT_POOL).collect();
     let slot_matches = slots::rank(conn, query, &pool, corpora)?;
     let slot_hits: Vec<Hit> = slots::hits(&slot_matches).into_iter().take(SLOT_FUSED).collect();
-    let hits = fuse_weighted(vec![
+    let mut lists = vec![
         (1.0, lexical),
         (1.0, trigram),
         (1.0, graph),
         (WEIGHT_MEMORY, memory),
         (WEIGHT_DERIVED, derived),
         (WEIGHT_SLOT, slot_hits),
-    ]);
+    ];
+    lists.extend(extra);
+    let hits = fuse_weighted(lists);
     Ok(Retrieval {
         hits,
         slots: slot_matches,

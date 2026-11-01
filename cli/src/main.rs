@@ -5,6 +5,7 @@ use std::time::Duration;
 
 mod corpus_cmd;
 mod dedup_cmd;
+mod dense_cmd;
 mod eval_cmd;
 mod hook_cmd;
 mod mcp_cmd;
@@ -49,6 +50,10 @@ const HELP: &str = "formslot: the Form family's context service
   remember --propose <text> [--anchor path#symbol] [--kind decision|how-to]   store a proposal and print NOOP, MERGE, SUPERSEDE or ADD
   search <query> [--corpus C] [--limit N] [--json]   ranked units, slots and memory records
   search rebuild [--corpus C]       rebuild the search indexes
+  search <query> --dense            add the dense list to the fusion (build with --features dense)
+  dense fetch [--yes]               show, then download, the gte-modernbert-base model (dense builds only)
+  dense build [--corpus C] [--rebuild]   embed units into the vec0 table (dense builds only)
+  dense status                      the model, sqlite-vec and the embedded units per corpus
   map <corpus> [--tokens N] [--formmap]   the ranked repo map, or FORMMAP.md under 150 lines
   pack <task> [--corpus C] [--tokens N] [--tier T1|T4|T16] [--json]   a P0/P1/P2 context pack
   eval [--gold F] [--corpus C] [--arm formslot|baseline|dense|all] [--k 1,4,10] [--json] [--out F]   recall, MRR, nDCG, tokens and latency over a gold set
@@ -101,6 +106,7 @@ fn main() -> ExitCode {
         "refs" => symbols_cmd::refs(&args[1..]),
         "dupes" => dedup_cmd::dupes(&args[1..]),
         "drift" => dedup_cmd::drift(&args[1..]),
+        "dense" => dense_cmd::run(&args[1..]),
         "search" => search_cmd::run(&args[1..]),
         "map" => search_cmd::map(&args[1..]),
         "pack" => search_cmd::pack(&args[1..]),

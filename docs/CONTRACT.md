@@ -25,6 +25,7 @@ Contract version: 1 · formslot v0.2.0
 | `corpus.sqlite` | 0600 | the corpus store (SQLite, WAL) |
 | `formslot.log` | 0600 | the log, always passed through redaction |
 | `declines.json` | 0600 | optional: replaces the built-in `data/declines.json` decline specs (v0.9.0); absent means the built-in list |
+| `dense/` | 0700 | optional, dense builds only (v0.10.0): `gte-modernbert-base/` (the downloaded model and tokenizer) and `lib/` (an ONNX Runtime library the owner placed there) |
 
 ## Discovery file
 
@@ -110,6 +111,10 @@ The `formslot` launcher at the repository root builds `formslot-cli` on first us
 | `formslot remember --propose <text> [--anchor path#symbol] [--kind decision\|how-to] [--corpus C] [--json]` | v0.7.0 |
 | `formslot search <query> [--corpus C] [--limit N] [--json]` | v0.7.0 |
 | `formslot search rebuild [--corpus C]` | v0.7.0 |
+| `formslot search <query> --dense [--corpus C] [--limit N] [--json]` | v0.10.0 |
+| `formslot dense fetch [--yes]` | v0.10.0 |
+| `formslot dense build [--corpus C] [--rebuild]` | v0.10.0 |
+| `formslot dense status` | v0.10.0 |
 | `formslot map <corpus> [--tokens N]` and `formslot map <corpus> --formmap [--tokens N]` | v0.7.0 |
 | `formslot pack <task> [--corpus C] [--tokens N] [--tier T1\|T4\|T16] [--count local\|remote] [--json]` | v0.7.0 |
 | `formslot mcp` | v0.9.0 |
@@ -174,6 +179,16 @@ Part = {"included": bool, "tokens": n, "sha256": "64 hex", "text": "..."}
 
 - `P0` is the stable prefix: the data notice, the corpus head, the owner rules (active `rule` records of authority `owner`, ordered by id, 350 tokens at most) and the repo map head (650 tokens). It carries no time and no per-call value, so it is byte-identical for one corpus head and one set of owner rules, whatever the task or tier, and `p0_sha256` is the SHA-256 of `parts.p0.text`. `P1` holds the matched slot cards (canonical and proposed, best match first) and matched unit locations. `P2` holds the task, matching memory records and the excerpts. Tier `T1` (about 1,000 tokens) sends `P2` only (`included: false` for `P0` and `P1`); `T4` (about 4,000) and `T16` (about 16,000) send all three; `--tokens` overrides the budget and picks the tier (up to 1,500 is T1, up to 8,000 is T4). When `P0` would take more than half the budget the pack is sent as `T1` and `tier` says so; the task line is clipped to what is left. `sent` never exceeds `budget` for a budget of 64 tokens or more. Excerpt text, rule and memory lines and slot cards pass the secret redaction (`[redacted by formslot]`) before they are counted.
 - Every piece of code text in a pack is one excerpt envelope per line in `P2`, the envelope of "Later" below with `copy` derived from the file's SPDX licence: `allowed` (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, 0BSD, CC0-1.0, Unlicense, BSL-1.0), `notice` (CC-BY without NC, ND or SA, MPL-2.0, LGPL) and `no_copy` (anything else, `unknown` and CC-BY-SA included). The repo map and the unit locations are index lines, not excerpts.
+
+## Dense tier (v0.10.0, optional)
+
+An optional retrieval list built from embeddings. It exists only in a binary built with the cargo feature `dense` (`cargo build --release --features dense`); the default build, its size and its dependency list are unchanged, and in it `formslot dense ...` and `search --dense` exit 1 and say how to build the feature. The schema is the same in every build.
+
+- Model: gte-modernbert-base (Apache-2.0), the int8 ONNX file and `tokenizer.json` of one pinned revision, 768 dimensions, CLS pooling, text cut at 512 tokens. It is never bundled. `formslot dense fetch` prints each URL, size and SHA-256, the licence and the target folder (`<data folder>/dense/gte-modernbert-base/`) and exits 1 without downloading; `formslot dense fetch --yes` downloads (with the system `curl`, https only) and checks size and SHA-256, deleting a file that does not match. With `pack --count remote`, it is one of the two commands that use the network; indexing, `dense build`, `search` and `search --dense` never do.
+- ONNX Runtime (1.23 or newer) is loaded at run time and is never fetched by formslot or by the build: `ORT_DYLIB_PATH`, else the first `libonnxruntime*` in `<data folder>/dense/lib/`, else the system loader's `onnxruntime` library name. A missing library is an error that says so.
+- `dense build [--corpus C] [--rebuild]` embeds each search unit (kind, qualified name, signature and the body clipped to 1,600 bytes, after secret redaction) into the `vec0` virtual table `unit_vec` (`float[768]`, cosine; rowid is `search_unit.id`). It resumes where it stopped; `--rebuild` forgets the corpus's vectors first. Without the model it exits 1 with the `dense fetch` instructions. `dense status` prints the model state, the sqlite-vec version and the embedded count per corpus.
+- `search --dense` adds one list, the 100 nearest units by cosine, to the fusion with weight 1.0 beside lexical, trigram and graph (reciprocal rank fusion, k = 60, test-path halving as before); its `why` entry is `dense #n (cosine x)`. Without the model it explains how to fetch it; with the model but no vectors it asks for `dense build`. Units without a vector, and vectors whose unit changed, are left out. `slot_find`, `pack` and the other MCP tools do not use the dense list.
+- Tables (migration 011, all builds): `dense_done` (`unit_id`, cascades with `search_unit`) and `dense_state` (`corpus_id`, `model`, `dim`, `units`, `built_at`). `unit_vec` is created by the dense commands, never by a migration.
 
 ## MCP (v0.9.0)
 

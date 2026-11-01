@@ -6,6 +6,8 @@ pub mod config;
 pub mod count;
 pub mod corpus;
 pub mod dedup;
+#[cfg(feature = "dense")]
+pub mod dense;
 pub mod discovery;
 pub mod eval;
 pub mod facts;

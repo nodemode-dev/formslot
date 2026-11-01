@@ -15,3 +15,6 @@ path = "src/main.rs"
 formslot-core = { path = "../core" }
 serde_json = "1"
 rusqlite = { version = "0.41", features = ["bundled"] }
+
+[features]
+dense = ["formslot-core/dense"]
