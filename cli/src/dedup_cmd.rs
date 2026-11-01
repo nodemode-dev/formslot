@@ -13,7 +13,7 @@ fn open() -> Result<Store, String> {
 
 fn resolve(conn: &Connection, key: &str) -> Result<(i64, String), String> {
     conn.query_row(
-        "SELECT id, name FROM corpus WHERE name = ?1 OR CAST(id AS TEXT) = ?1",
+        "SELECT id, name FROM corpus WHERE name = ?1 OR CAST(id AS TEXT) = ?1 ORDER BY name = ?1 DESC LIMIT 1",
         params![key],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )
@@ -74,7 +74,7 @@ fn print_groups(conn: &Connection, scope: &str, limit: usize) -> Result<(), Stri
     );
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
     let groups: Vec<(i64, String, i64)> = stmt
-        .query_map(params![limit as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .query_map(params![if limit == 0 { -1 } else { limit as i64 }], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
