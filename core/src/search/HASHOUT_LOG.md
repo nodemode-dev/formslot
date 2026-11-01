@@ -286,3 +286,43 @@ Profiled before any change (warm run, formvis, one task): the P0 repo map was th
 - logged: v0.14.0 · 2026-10-31
 
 `mmap_size` 256 MiB, `cache_size` 64 MiB and `temp_store` MEMORY are set on every connection, and the prepared statement cache holds 64 statements instead of 16 so the per-pool search statements and the memory statements all stay cached. None of these changes results. No covering index migration was added: the full-text and trigram stages were 2 to 7 ms warm, so there was nothing for an index to win.
+
+### core/src/search/pack.rs · stored repo map
+
+- refers-to: core/src/search/pack.rs :: build_p0
+- kind: rationale
+- logged: v0.15.0 · 2026-11-01
+
+A one-off CLI `pack` is a fresh process, so the thread-local map list never hit and the P0 repo map (about 200 ms of graph build and pagerank on formvis) was rebuilt every time. Migration 012 adds `map_cache`, one row per corpus holding the rendered P0 map body with the `head`, `indexed_at`, `search_unit` count and `edge` count it was built from, plus `rev`, the package version and a local revision digit. `build_p0` looks in the thread-local list first, then in the table (all six columns must equal the live state), and only then builds; a build writes the row and failures to write are ignored, so a read-only store still packs. The row is invalid when any key column differs, and a trigger on `corpus` deletes it when `head` or `indexed_at` is updated, which every reindex does. A corpus delete cascades. `MAP_REV` must be edited whenever `rank_entries`, `fit`, `params_of` or the P0 token budget change, otherwise a store written by the old code keeps serving the old map within one release; the package version covers release upgrades. The body is the same string the uncached path produced (the pack output and its P0 sha256 were compared on formslot-v140 and this build). Measured one-off `pack` on the subform corpus, 10 runs each: 147 ms median before, 96 ms median after the first run (the first run after the upgrade builds and stores, 153 ms).
+
+### core/src/search/lexical.rs · covered (term weights once per query)
+
+- refers-to: core/src/search/lexical.rs :: covered
+- kind: rationale
+- logged: v0.15.0 · 2026-11-01
+
+`search::retrieve` calls `covered` for memory and again for notes with the same query, and each call ran `term_weights` (one `COUNT` plus one full-text count per term, about 19 ms warm, 38 ms for both). The weights now sit in a one-entry thread-local keyed by the store path, the query, and `memory_record` row count, active count, highest id and latest `updated_at`, so the second call (and a repeated query in `eval` or `formslot mcp`) reuses them and any memory write that adds, retires or edits a record recomputes. The key read is one aggregate over an indexed-size table. The weights, the filter and its order are unchanged, so results are identical. The remaining double work, the slot manifest JSON being parsed again for every query in `slots::docs`, lives in slots.rs and is described in the v0.15.0 report for that file's owner. A warm profile of the rest of `pack` found no other single stage over 10 ms that this file set can remove: the lexical and trigram pools are 2 to 7 ms each, process start and migrate 4 ms.
+
+### core/src/search/slots.rs · rank (rule slots, graded foreign weight)
+
+- refers-to: core/src/search/slots.rs :: rank, is_rule_slot, Match::weight; core/src/search/mod.rs :: fuse_mixed, retrieve_with
+- kind: rationale
+- logged: v0.15.0 · 2026-10-30
+
+The v0.13.0 foreign-slot demotion to 0.5 removed correct answers: `rule.family-laws` (present in every corpus, origin formvis), `ui.toast` and `ui.dialog-kit` are answers on weak matches in other repositories (h036 h038 h071 h085 h092 h095 h076 h080). Three changes. (1) A slot is a rule slot when its manifest kind is rule, its id starts with `rule.`, or all its files are a root CLAUDE.md, AGENTS.md or NOTICE.md. Rule slots are native everywhere: no repository test in the file evidence, and their file evidence reads the top 40 fused units, not the top 10. Weight is 2.0 when grounded (idf coverage at least 0.6, or a pool unit in a rule document) and 1.0 otherwise. (2) A foreign non-rule slot gets 0.5 + 1.5 * min(1, coverage / 0.6) where coverage is the idf-mass share of the query terms the slot covers (before: 2.0 at 0.6 or more, else 0.5), and 1.0 at least when it is the top slot and one of its files is among the top 40 fused units of any corpus. The weight rides on each slot hit (`Match.weight`) and `fuse_mixed` applies it per entry in one slot list ranked by slot order, cut at five; before there were two lists (grounded, weak) ranked separately. Measured alone, rule nativeness plus grading moved subform held-out R@1 and R@4 up .029 and nothing else; the deep file evidence alone moved nothing measurable. Gains are small because most named tasks fail on the unit list, not the slot weight.
+
+### core/src/search/mod.rs · retrieve_with (doc unit trigram credit)
+
+- refers-to: core/src/search/mod.rs :: retrieve_with, text_trigram
+- kind: rationale
+- logged: v0.15.0 · 2026-10-30
+
+A doc unit gets one list entry (text lexical) where a code unit gets lexical, trigram and graph entries. The doc unit that tops the text lexical list now also enters the text trigram list at rank 1 when it is not there, with the 0.8 penalty kept. Effect: formslot held-out R@4 .412 to .471, subform held-out R@10 .543 to .571, gold.jsonl R@1 unchanged (.333 tuning, .394 held-out), gold.jsonl tuning R@4 .649 to .658 in one run; cost: ranks of 36 tasks moved down by 1 to 5 as the doc unit pushes code units, and h049 left the pack (v1 without credit has it in), subform held-out R@4k+P0 .857 to .829. Kept because R@1 and R@10 do not fall anywhere and the pack loss is one task; the owner can drop the block (about eight lines) if h049-type pack losses matter more.
+
+### core/src/search/index.rs · fts_insert (ablation of identifier and path words, not adopted)
+
+- refers-to: core/src/search/index.rs :: fts_insert; core/src/search/text.rs :: identifier_words, path_words
+- kind: rationale
+- logged: v0.15.0 · 2026-10-30
+
+Built twice with the v0.13.0 index words off (query keeps 24 terms): both off, and body identifier words off with path words kept. Both off: h095 17 to 2, h071 20 to 3, h092 8 to 1, h076 9 to 3, h055 20 to 6, h094 6 to 2, h039 into the pack; but h049 stays out (39), h008 rank 52 to 61, and the tuning halves fall (subform R@1 .378 to .297, R@10 .784 to .703; formslot R@4 .625 to .500). Body words off only: tuning rises (subform R@4 .649 to .676, formslot R@4 .625 to .688), held-out R@4 formslot .471 to .529, but h008 52 to 72, h095 and h049 do not recover, and gold.jsonl held-out R@1 .394 to .333. The brief's condition (h049 and h095 recover without losing h008 and h039) is met by neither, so the index is unchanged and no rebuild is needed. The result is a split verdict for the owner: dropping body words is better on the tuning halves and worse on one gold held-out half.

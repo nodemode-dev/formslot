@@ -195,6 +195,7 @@ pub fn sha256_hex(text: &str) -> String {
 }
 
 const MAP_CACHE_ENTRIES: usize = 4;
+const MAP_REV: &str = concat!(env!("CARGO_PKG_VERSION"), "/1");
 
 type MapKey = (String, i64, String, String, i64, i64);
 
@@ -218,6 +219,22 @@ fn map_key(conn: &Connection, corpus_id: i64) -> Option<MapKey> {
         .query_row("SELECT COUNT(*) FROM edge WHERE corpus_id = ?1", params![corpus_id], |r| r.get(0))
         .ok()?;
     Some((path, corpus_id, head, indexed, units, edges))
+}
+
+fn stored_map(conn: &Connection, corpus_id: i64, key: &MapKey) -> Option<String> {
+    conn.prepare_cached(
+        "SELECT body FROM map_cache WHERE corpus_id = ?1 AND head = ?2 AND indexed_at = ?3 AND units = ?4 AND edges = ?5 AND rev = ?6",
+    )
+    .and_then(|mut s| s.query_row(params![corpus_id, key.2, key.3, key.4, key.5, MAP_REV], |r| r.get::<_, String>(0)))
+    .ok()
+}
+
+fn store_map(conn: &Connection, corpus_id: i64, key: &MapKey, body: &str) {
+    let _ = conn
+        .prepare_cached(
+            "INSERT OR REPLACE INTO map_cache (corpus_id, head, indexed_at, units, edges, rev, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )
+        .and_then(|mut s| s.execute(params![corpus_id, key.2, key.3, key.4, key.5, MAP_REV, body]));
 }
 
 fn build_p0(conn: &Connection, target: &Target) -> crate::Result<(Part, Vec<i64>)> {
@@ -270,8 +287,18 @@ fn build_p0(conn: &Connection, target: &Target) -> crate::Result<(Part, Vec<i64>
     let body = match cached {
         Some(body) => body,
         None => {
-            let ranked = map::rank_entries(conn, target.id)?;
-            let (_, body) = map::fit(&ranked.entries, P0_MAP_TOKENS, usize::MAX);
+            let stored = key.as_ref().and_then(|k| stored_map(conn, target.id, k));
+            let body = match stored {
+                Some(body) => body,
+                None => {
+                    let ranked = map::rank_entries(conn, target.id)?;
+                    let (_, body) = map::fit(&ranked.entries, P0_MAP_TOKENS, usize::MAX);
+                    if let Some(k) = key.as_ref() {
+                        store_map(conn, target.id, k, &body);
+                    }
+                    body
+                }
+            };
             if let Some(k) = key {
                 MAP_BODY.with(|c| {
                     let mut list = c.borrow_mut();

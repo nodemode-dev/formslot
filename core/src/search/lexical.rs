@@ -251,8 +251,38 @@ fn term_weights(conn: &Connection, query: &str) -> Vec<(String, f64)> {
     out
 }
 
+type WeightKey = (String, String, i64, i64, i64, String);
+
+thread_local! {
+    static WEIGHTS: std::cell::RefCell<Option<(WeightKey, Vec<(String, f64)>)>> = const { std::cell::RefCell::new(None) };
+}
+
+fn weights_key(conn: &Connection, query: &str) -> Option<WeightKey> {
+    let path = conn.path().map(str::to_string).filter(|p| !p.is_empty())?;
+    let (all, active, top, stamp) = conn
+        .prepare_cached(
+            "SELECT COUNT(*), COALESCE(SUM(status = 'active'), 0), COALESCE(MAX(id), 0), COALESCE(MAX(updated_at), '') FROM memory_record",
+        )
+        .and_then(|mut s| s.query_row([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, String>(3)?))))
+        .ok()?;
+    Some((path, query.to_string(), all, active, top, stamp))
+}
+
+fn weights_once(conn: &Connection, query: &str) -> Vec<(String, f64)> {
+    let Some(key) = weights_key(conn, query) else {
+        return term_weights(conn, query);
+    };
+    let hit = WEIGHTS.with(|c| c.borrow().as_ref().filter(|e| e.0 == key).map(|e| e.1.clone()));
+    if let Some(found) = hit {
+        return found;
+    }
+    let fresh = term_weights(conn, query);
+    WEIGHTS.with(|c| *c.borrow_mut() = Some((key, fresh.clone())));
+    fresh
+}
+
 pub fn covered(conn: &Connection, hits: Vec<Hit>, query: &str, share: f64) -> Vec<Hit> {
-    let weights = term_weights(conn, query);
+    let weights = weights_once(conn, query);
     let whole: f64 = weights.iter().map(|(_, w)| w).sum();
     if weights.is_empty() || whole <= 0.0 {
         return Vec::new();
