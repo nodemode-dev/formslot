@@ -182,3 +182,35 @@ Removed: restating an owner rule that P0 already carries as a memory line in P2 
 - logged: v0.10.2 · 2026-10-30
 
 The line-parity halves were not held out: gold is history ordered, so neighbours share files and commits, and parameters were chosen on all 147 tasks. `clusters` joins tasks that share any expected file, symbol or slot or the same 7-hex source commit (union-find, 49 clusters, largest 33), and `select_half` gives each whole cluster to the held-out half when the first byte of the SHA-256 of its smallest task id is odd. That is deterministic and cluster-separated, but unbalanced (114 tuning, 33 held-out, no convention or decline in held-out), and the gold set was written before tuning with some parameters picked on all tasks, so the held-out number is indicative only. Memory phrases are not link keys: owner rules are shared by many unrelated tasks.
+
+### core/src/search/docs.rs · units, mode_of
+
+- refers-to: core/src/search/docs.rs :: units
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+The held-out gold showed that only files the symbol extractors parse were searchable: Markdown, JSON, TOML, YAML, shell and batch scripts and extensionless launchers (`formvis`, `setup/freeze_backend`) had no search units, so any task that named them (a plugin skill, a hooks.json, a launcher, a NOTICE row, a sub-skill) could only be answered through a slot or a memory record. `sync` now also reads files that have no parsed units, role source, doc or data, not binary, at most 256 KiB, and builds search units from them: Markdown is cut at headings of level 1 to 3 (kind `section`, qualified is the heading trail, sections under 24 bytes dropped, the path is the signature so directory words match), other config and script files become one `text` unit, and an extensionless file counts only with a shebang. HASHOUT and CHANGELOG logs (role log), vendored, mirror, generated and binary files and lockfiles are left out. The units reach the pack as unit lines and excerpts through the existing path (`unit_text` reads byte spans). They are excluded from the PageRank graph (`rank.rs`) so the P0 repo map does not fill with docs. Costs: formvis search units 17.6k to about 20k, median latency 259 ms to 460 ms on formvis, and the dense tier will embed the extra units (not changed here). A rebuild is needed (`formslot search rebuild`): unchanged blobs with no units are re-read on every sync for the extensionless candidates only.
+
+### core/src/search/mod.rs · fuse_weighted, TEXT_PENALTY
+
+- refers-to: core/src/search/mod.rs :: fuse_weighted
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+Text units (`section`, `text`) are multiplied by 0.8 in the fusion, as test files are by 0.5. Without it the doc sections flooded the top ranks of code tasks on the formvis gold (R@1 0.320 to 0.259, R@10 0.844 to 0.762 with no penalty). Tried on the tuning half and formvis gold: 0.6 (R@10 0.837 on formvis gold, formslot tuning R@10 0.688) and 0.8 (0.830, 0.750); 0.8 kept. It is a small penalty because documentation is the right answer for rule and config questions, and the memory records already carry the rules.
+
+### core/src/search/lexical.rs · memory_notes, memory_by
+
+- refers-to: core/src/search/lexical.rs :: memory_notes
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+Memory ingest now reads each corpus's own docs (see core/src/memory/HASHOUT_LOG.md), which added 1,972 derived how-to records to formvis alone. Left in the shared pool with the owner rules they pushed rules out of the 20-record pool (formvis gold R@1 was 0.259 and R@10 0.769 with them in the shared pool, 0.347 and 0.837 with their own). They get their own pool, `memory_notes`: derived how-to only, same 30 percent term coverage, at most three, weight 1.0 (owner rules and declines keep weight 2.0, hashout and tombstone 0.7). `memory_by(Some(false))` now excludes derived how-to. Effect on formvis gold with the docs ingested: R@4k 0.864 to 0.884, R@10 0.844 to 0.830, R@1 0.320 to 0.354.
+
+### core/src/search/mod.rs · retrieve_with (limits seen)
+
+- refers-to: core/src/search/mod.rs :: retrieve_with
+- kind: warning-context
+- logged: v0.11.0 · 2026-10-30
+
+Not fixed by this change, seen on the tuning half: expected code that the task describes in words the code does not use stays low (h042 find_bin for "finds an executable on this machine" is not in the top 100; h106 dedup.rs at 59 for "near-copies in tiers"; h112 redact.rs at 77 for "scrub a key"; h039 dom.ts at 43). That is a vocabulary gap the lexical tiers cannot close; the dense tier is the intended fix. Slots from another repository also take the top five ranks of unrelated tasks (their text match alone is enough to enter at weight 2.0); not changed because the formvis tuning leans on it.

@@ -206,13 +206,21 @@ pub fn covered(conn: &Connection, hits: Vec<Hit>, query: &str, share: f64) -> Ve
 }
 
 pub fn memory_by(conn: &Connection, scope: Option<i64>, query: &str, limit: usize, derived: Option<bool>) -> crate::Result<Vec<Hit>> {
-    let Some(m) = fts_or(&query_terms(query)) else {
-        return Ok(Vec::new());
-    };
     let filter = match derived {
         None => "",
         Some(true) => " AND r.kind IN ('hashout', 'tombstone')",
-        Some(false) => " AND r.kind NOT IN ('hashout', 'tombstone')",
+        Some(false) => " AND r.kind NOT IN ('hashout', 'tombstone') AND NOT (r.kind = 'how-to' AND r.authority = 'derived')",
+    };
+    memory_filtered(conn, scope, query, limit, filter)
+}
+
+pub fn memory_notes(conn: &Connection, scope: Option<i64>, query: &str, limit: usize) -> crate::Result<Vec<Hit>> {
+    memory_filtered(conn, scope, query, limit, " AND r.kind = 'how-to' AND r.authority = 'derived'")
+}
+
+fn memory_filtered(conn: &Connection, scope: Option<i64>, query: &str, limit: usize, filter: &str) -> crate::Result<Vec<Hit>> {
+    let Some(m) = fts_or(&query_terms(query)) else {
+        return Ok(Vec::new());
     };
     let mut stmt = conn
         .prepare(&format!(

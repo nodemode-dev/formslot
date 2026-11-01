@@ -62,7 +62,7 @@ pub fn build(conn: &Connection, corpus_id: i64) -> crate::Result<Graph> {
     let mut stmt = conn
         .prepare(
             "SELECT path, qualified, kind, name, signature, exported, start_line FROM search_unit \
-             WHERE corpus_id = ?1 ORDER BY path, qualified, idx",
+             WHERE corpus_id = ?1 AND kind NOT IN ('section', 'text') ORDER BY path, qualified, idx",
         )
         .map_err(sql)?;
     let rows = stmt

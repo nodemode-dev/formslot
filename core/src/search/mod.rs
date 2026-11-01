@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use rusqlite::Connection;
 use serde::Serialize;
 
+pub mod docs;
 pub mod index;
 pub mod lexical;
 pub mod map;
@@ -23,11 +24,15 @@ const GRAPH_SEEDS: usize = 8;
 const SLOT_POOL: usize = 10;
 const SLOT_FUSED: usize = 5;
 const TEST_PENALTY: f64 = 0.5;
+const TEXT_PENALTY: f64 = 0.8;
 const WEIGHT_SLOT: f64 = 2.0;
 const WEIGHT_MEMORY: f64 = 2.0;
 const MEMORY_FUSED: usize = 4;
 const MEMORY_COVERAGE: f64 = 0.3;
 const WEIGHT_DERIVED: f64 = 0.7;
+const WEIGHT_NOTES: f64 = 1.0;
+const NOTES_COVERAGE: f64 = 0.3;
+const NOTES_FUSED: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct Target {
@@ -132,6 +137,10 @@ pub fn is_test_path(path: &str) -> bool {
         || name.contains("_test.")
 }
 
+pub fn is_text_unit(kind: &str) -> bool {
+    kind == "section" || kind == "text"
+}
+
 pub fn fuse_weighted(lists: Vec<(f64, Vec<Hit>)>) -> Vec<Hit> {
     let mut order: Vec<String> = Vec::new();
     let mut merged: HashMap<String, Hit> = HashMap::new();
@@ -156,6 +165,9 @@ pub fn fuse_weighted(lists: Vec<(f64, Vec<Hit>)>) -> Vec<Hit> {
     for h in out.iter_mut() {
         if h.kind == "unit" && is_test_path(&h.path) {
             h.score *= TEST_PENALTY;
+        }
+        if h.kind == "unit" && is_text_unit(&h.unit_kind) {
+            h.score *= TEXT_PENALTY;
         }
     }
     out.sort_by(|a, b| {
@@ -192,6 +204,15 @@ pub fn retrieve_with(
     .take(MEMORY_FUSED)
     .collect();
     let derived = lexical::memory_by(conn, scope, query, POOL_MEMORY, Some(true))?;
+    let notes: Vec<Hit> = lexical::covered(
+        conn,
+        lexical::memory_notes(conn, scope, query, POOL_MEMORY)?,
+        query,
+        NOTES_COVERAGE,
+    )
+    .into_iter()
+    .take(NOTES_FUSED)
+    .collect();
     let pool: Vec<Hit> = fuse(vec![lexical.clone(), trigram.clone()]).into_iter().take(SLOT_POOL).collect();
     let slot_matches = slots::rank(conn, query, &pool, corpora)?;
     let slot_hits: Vec<Hit> = slots::hits(&slot_matches).into_iter().take(SLOT_FUSED).collect();
@@ -201,6 +222,7 @@ pub fn retrieve_with(
         (1.0, graph),
         (WEIGHT_MEMORY, memory),
         (WEIGHT_DERIVED, derived),
+        (WEIGHT_NOTES, notes),
         (WEIGHT_SLOT, slot_hits),
     ];
     lists.extend(extra);

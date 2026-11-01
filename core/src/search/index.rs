@@ -1,5 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
+use super::docs;
 use super::text::split_words;
 use crate::git::{BlobReader, Repo};
 
@@ -129,6 +130,54 @@ fn add_file(
     Ok(added)
 }
 
+fn add_docs(
+    conn: &Connection,
+    corpus_id: i64,
+    path: &str,
+    oid: &str,
+    mode: docs::Mode,
+    data: &[u8],
+) -> crate::Result<u64> {
+    let mut added = 0;
+    for (idx, u) in docs::units(mode, path, data).iter().enumerate() {
+        let slice = data.get(u.start_byte..u.end_byte).unwrap_or(&[]);
+        let body = String::from_utf8_lossy(slice).to_string();
+        let body = cut(&body, BODY_CAP).to_string();
+        conn.prepare_cached(
+            "INSERT INTO search_unit (corpus_id, path, oid, idx, kind, name, qualified, signature, exported, \
+             start_byte, end_byte, start_line, end_line) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?11, ?12)",
+        )
+        .map_err(sql)?
+        .execute(params![
+            corpus_id,
+            path,
+            oid,
+            idx as i64,
+            u.kind,
+            u.name,
+            u.qualified,
+            u.signature,
+            u.start_byte as i64,
+            u.end_byte as i64,
+            u.start_line,
+            u.end_line
+        ])
+        .map_err(sql)?;
+        let id = conn.last_insert_rowid();
+        let words = split_words(&u.qualified).join(" ");
+        conn.prepare_cached("INSERT INTO unit_fts (rowid, name, words, signature, body) VALUES (?1, ?2, ?3, ?4, ?5)")
+            .map_err(sql)?
+            .execute(params![id, u.name, words, u.signature, body])
+            .map_err(sql)?;
+        conn.prepare_cached("INSERT INTO unit_tri (rowid, name, qualified, path) VALUES (?1, ?2, ?3, ?4)")
+            .map_err(sql)?
+            .execute(params![id, u.name, u.qualified, path])
+            .map_err(sql)?;
+        added += 1;
+    }
+    Ok(added)
+}
+
 pub fn sync(conn: &Connection, corpus_id: i64, format: &str, repo: &Repo) -> crate::Result<SyncStats> {
     let mut stats = SyncStats::default();
     stats.removed = conn
@@ -152,10 +201,43 @@ pub fn sync(conn: &Connection, corpus_id: i64, format: &str, repo: &Repo) -> cra
             .collect::<Result<_, _>>()
             .map_err(sql)?
     };
-    if pending.is_empty() {
+    let doc_pending: Vec<(String, String, docs::Mode)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT f.path, f.oid, f.size FROM file f JOIN blob b ON b.object_format = ?2 AND b.oid = f.oid \
+                 WHERE f.corpus_id = ?1 AND b.is_binary = 0 \
+                 AND f.role IN ('source', 'doc', 'data') \
+                 AND NOT EXISTS (SELECT 1 FROM unit u WHERE u.object_format = ?2 AND u.oid = f.oid) \
+                 AND NOT EXISTS (SELECT 1 FROM search_unit s WHERE s.corpus_id = f.corpus_id AND s.path = f.path AND s.oid = f.oid) \
+                 ORDER BY f.path",
+            )
+            .map_err(sql)?;
+        let rows: Vec<(String, String, i64)> = stmt
+            .query_map(params![corpus_id, format], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(sql)?
+            .collect::<Result<_, _>>()
+            .map_err(sql)?;
+        rows.into_iter()
+            .filter_map(|(p, o, size)| docs::mode_of(&p, size).map(|m| (p, o, m)))
+            .collect()
+    };
+    if pending.is_empty() && doc_pending.is_empty() {
         return Ok(stats);
     }
     let mut reader: Option<BlobReader> = None;
+    for (path, oid, mode) in &doc_pending {
+        if reader.is_none() {
+            reader = Some(repo.blob_reader()?);
+        }
+        let data = match reader.as_mut() {
+            Some(r) => r.read(oid).unwrap_or(None),
+            None => None,
+        };
+        if let Some(bytes) = data {
+            stats.added += add_docs(conn, corpus_id, path, oid, *mode, &bytes)?;
+            stats.files += 1;
+        }
+    }
     for (path, oid) in &pending {
         if reader.is_none() {
             reader = Some(repo.blob_reader()?);
