@@ -9,12 +9,15 @@ mod mcp_cmd;
 mod memory_cmd;
 mod search_cmd;
 mod service_cmd;
+mod setup_cmd;
 mod slot_cmd;
 mod symbols_cmd;
 
 use formslot_core::VERSION;
 
 const HELP: &str = "formslot: the Form family's context service
+
+  setup [--yes] [--repo PATH]... [--no-path] [--dry-run]   guided first-time setup in plain language: checks this computer, puts formslot on your PATH, starts the service, indexes your projects and connects Claude Code; safe to run again; with no arguments on a terminal, `formslot` offers it
 
   serve [--detach]   run the service on 127.0.0.1 until stopped (one per data folder); --detach starts it in the background
   start      start the service in the background if none runs, wait for it, print its port and pid
@@ -90,12 +93,16 @@ fn quiet_on_closed_pipe() {
 fn main() -> ExitCode {
     quiet_on_closed_pipe();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty() && std::io::IsTerminal::is_terminal(&std::io::stdin()) && std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+        return setup_cmd::bare();
+    }
     let command = args.first().map(String::as_str).unwrap_or("help");
     if args.len() > 1 && args[1..].iter().any(|a| a == "--help" || a == "-h") {
         print!("{HELP}");
         return ExitCode::SUCCESS;
     }
     match command {
+        "setup" => setup_cmd::run(&args[1..]),
         "serve" => service_cmd::serve(&args[1..]),
         "start" => service_cmd::start(),
         "stop" => service_cmd::stop(),

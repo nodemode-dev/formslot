@@ -66,7 +66,7 @@ fn trusted(_path: &Path) -> bool {
 }
 
 fn data_bin() -> PathBuf {
-    config::data_dir().join("bin")
+    config::data_dir_path().join("bin")
 }
 
 fn in_data_bin(name: &str) -> Option<PathBuf> {

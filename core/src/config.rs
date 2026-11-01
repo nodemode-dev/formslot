@@ -18,11 +18,15 @@ fn home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-pub fn data_dir() -> PathBuf {
-    let dir = match env::var_os("FORMSLOT_DATA_DIR") {
+pub fn data_dir_path() -> PathBuf {
+    match env::var_os("FORMSLOT_DATA_DIR") {
         Some(v) if !v.is_empty() => PathBuf::from(v),
         _ => home().join(".formslot"),
-    };
+    }
+}
+
+pub fn data_dir() -> PathBuf {
+    let dir = data_dir_path();
     if !dir.exists() {
         let _ = fs::create_dir_all(&dir);
         #[cfg(unix)]

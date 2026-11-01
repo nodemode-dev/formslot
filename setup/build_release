@@ -52,8 +52,8 @@ mkdir -p "$stage/plugin" "$stage/data"
 
 cp "$bin" "$stage/formslot"
 chmod 755 "$stage/formslot"
-cp LICENSE NOTICE.md README.md formslot_oc_install "$stage/"
-chmod 755 "$stage/formslot_oc_install"
+cp LICENSE NOTICE.md README.md formslot_oc_install "Install formslot.command" "$stage/"
+chmod 755 "$stage/formslot_oc_install" "$stage/Install formslot.command"
 cp -R plugin/formslot "$stage/plugin/formslot"
 cp -R data/. "$stage/data/"
 

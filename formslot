@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -e
-cd "$(dirname "$0")"
+here="$(cd "$(dirname "$0")" && pwd)"
 
-bin=target/release/formslot-cli
-if [ ! -x "$bin" ] || [ -n "$(find cli core Cargo.toml Cargo.lock -newer "$bin" \( -name '*.rs' -o -name '*.sql' -o -name '*.toml' -o -name '*.lock' \) 2>/dev/null | head -1)" ]; then
+bin="$here/target/release/formslot-cli"
+if [ ! -x "$bin" ] || [ -n "$(cd "$here" && find cli core Cargo.toml Cargo.lock -newer "$bin" \( -name '*.rs' -o -name '*.sql' -o -name '*.toml' -o -name '*.lock' \) 2>/dev/null | head -1)" ]; then
   command -v cargo >/dev/null || { echo "Rust is required: https://rustup.rs. Then run ./formslot_oc_install" >&2; exit 1; }
-  cargo build -q --release --locked -p formslot-cli >&2
+  [ -x "$bin" ] || echo "First run: building formslot. This takes a few minutes and only happens once." >&2
+  (cd "$here" && cargo build -q --release --locked -p formslot-cli) >&2
 fi
 exec "$bin" "$@"

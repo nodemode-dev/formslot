@@ -28,7 +28,7 @@ echo Check it with: formslot.bat status
 echo Check this computer with: formslot.bat doctor
 
 :place
-if not "%USERINSTALL%"=="1" exit /b 0
+if not "%USERINSTALL%"=="1" goto offer
 
 set "DEST=%LOCALAPPDATA%\Programs\formslot"
 if not exist "%DEST%" mkdir "%DEST%" || exit /b 1
@@ -40,7 +40,22 @@ echo %PATH% | find /i "%DEST%" >nul && (echo %DEST% is already on your PATH, so 
   echo   [Environment]::SetEnvironmentVariable^('Path', [Environment]::GetEnvironmentVariable^('Path','User'^) + ';%DEST%', 'User'^)
 )
 echo Connect a repository with: formslot install ^<repo^>
+set "SETUPEXE=%DEST%\formslot.exe"
+
+:offer
+if defined FORMSLOT_NO_SETUP_OFFER exit /b 0
+if not defined SETUPEXE set "SETUPEXE=%BUILT%"
+echo.
+echo Or let formslot walk you through everything: "%SETUPEXE%" setup
+set "ANSWER="
+set /p "ANSWER=Run the guided setup now? [Y/n] "
+if not defined ANSWER goto runsetup
+if /i "%ANSWER:~0,1%"=="y" goto runsetup
 exit /b 0
+
+:runsetup
+"%SETUPEXE%" setup
+exit /b %errorlevel%
 
 :usage
 echo formslot_oc_install.bat           check git and cargo and build the release binary here

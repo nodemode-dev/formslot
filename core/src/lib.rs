@@ -29,6 +29,7 @@ pub mod redact;
 pub mod related;
 pub mod search;
 pub mod select;
+pub mod setup;
 pub mod slots;
 pub mod store;
 pub mod symbols;

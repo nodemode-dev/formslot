@@ -33,6 +33,7 @@ copy /y LICENSE "%STAGE%\" >nul || exit /b 1
 copy /y NOTICE.md "%STAGE%\" >nul || exit /b 1
 copy /y README.md "%STAGE%\" >nul || exit /b 1
 copy /y formslot_oc_install.bat "%STAGE%\" >nul || exit /b 1
+copy /y "Install formslot.bat" "%STAGE%\" >nul || exit /b 1
 xcopy /e /i /q /y plugin\formslot "%STAGE%\plugin\formslot" >nul || exit /b 1
 xcopy /e /i /q /y data "%STAGE%\data" >nul || exit /b 1
 

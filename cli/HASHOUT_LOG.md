@@ -221,3 +221,35 @@ A stale `service.json` (dead or reused pid, nothing or something else on its por
 - logged: v0.11.0 · 2026-10-30
 
 `--max-cost` is refused unless it is finite and above zero: NaN and negative caps made the spend check never or always fire. The engine repeats the check, so a library caller gets the same refusal.
+
+### cli/src/setup_cmd.rs · run
+
+- refers-to: cli/src/setup_cmd.rs :: run
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+The wizard holds only prompts and wording; tool checks, binary placement, shell file edits and path cleaning are in core/src/setup.rs. Services and connections go through the program's own commands (`start`, `status`, `install`, `doctor`) run as child processes of the installed binary rather than copies of their code: `start` needs `current_exe` to be the binary that should serve, and `install` writes `formslot` or an absolute path depending on that binary's PATH, so the child gets PATH with the program folder in front only when the folder is on PATH or was just added to the shell file. "Connected" is `install --dry-run` reporting nothing to change, run the same way, so a second setup agrees with the first. `--dry-run` and `--yes` imply no prompts; a missing terminal without either exits 2 before anything is touched. Port 5645 being busy shows up as a start failure with the start command's own message; setup carries on, since indexing does not need the service.
+
+### cli/src/setup_cmd.rs · arm_interrupt, critical
+
+- refers-to: cli/src/setup_cmd.rs :: critical
+- kind: warning-context
+- logged: v0.13.0 · 2026-10-30
+
+Ctrl+C prints one sentence and exits 130 at once, except inside `critical`: the binary copy (temporary name then rename) and the shell file append (backup first, one write) set a busy flag, and an interrupt that arrives then is acted on after the step finishes. The `install` child runs in its own process group so the terminal's SIGINT does not stop it halfway. An interrupted index run is not protected the same way: the store is SQLite and the next run reads again only what is missing. End of input on a prompt counts as leaving. Checked with a pseudo-terminal: Ctrl+C at the shell-file question left the copied binary in place and the shell file unchanged.
+
+### cli/src/main.rs · bare command
+
+- refers-to: cli/src/main.rs :: main
+- kind: rationale
+- logged: v0.13.0 · 2026-10-30
+
+No arguments used to print the help. It now offers setup or a status only when stdin and stdout are both terminals, so pipes, cron and scripts still get the help text and its exit code. "Set up" means at least one indexed project in the store, read with a read-only connection so asking creates nothing.
+
+### cli/src/setup_cmd.rs · step_path (shell file)
+
+- refers-to: core/src/setup.rs :: add_to_rc
+- kind: warning-context
+- logged: v0.13.0 · 2026-10-30
+
+The PATH line is shown first and appended only after a yes (or `--yes` without `--no-path`). The file is backed up as `<name>.formslot-backup` before the append, and a marker comment line makes a second run recognise the edit. The append goes through the path itself, not a rename, so a shell file that is a symlink into a dotfiles repository keeps being a symlink. No sudo anywhere. Windows runs one PowerShell command that adds the folder to the user PATH only when it is not listed.
