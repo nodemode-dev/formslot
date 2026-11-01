@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://formslot.local/docs/slot.schema.json",
+  "title": "formslot slot manifest",
+  "type": "object",
+  "required": ["schemaVersion", "id", "title", "summary", "kind", "status", "version", "origin", "files"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$",
+      "maxLength": 80
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 280 },
+    "description": { "type": "string" },
+    "kind": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "categories": { "type": "array", "items": { "type": "string" } },
+    "layer": { "enum": ["frontend", "engine", "shell", "shared"] },
+    "status": { "enum": ["proposed", "canonical", "deprecated", "declined", "superseded"] },
+    "statusReason": { "type": "string" },
+    "supersededBy": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$" },
+    "version": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$" },
+    "origin": {
+      "type": "object",
+      "required": ["repo", "path", "app", "appVersion"],
+      "properties": {
+        "repo": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" },
+        "tag": { "type": "string" },
+        "app": { "type": "string", "minLength": 1 },
+        "appVersion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "changelog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "summary"],
+        "properties": {
+          "version": { "type": "string" },
+          "date": { "type": "string" },
+          "summary": { "type": "string" },
+          "breaking": { "type": "boolean" },
+          "requiresMigration": { "type": "boolean" }
+        }
+      }
+    },
+    "api": {
+      "type": "object",
+      "properties": {
+        "exports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["symbol"],
+            "properties": {
+              "file": { "type": "string" },
+              "symbol": { "type": "string" },
+              "signature": { "type": "string" },
+              "doc": { "type": "string" }
+            }
+          }
+        },
+        "commands": { "type": "array", "items": { "type": "object" } },
+        "routes": { "type": "array", "items": { "type": "object" } },
+        "cssClasses": { "type": "array", "items": { "type": "string" } },
+        "cssVars": { "type": "array", "items": { "type": "string" } },
+        "events": { "type": "array", "items": { "type": "object" } },
+        "packageExports": { "type": "object" }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "role", "port"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "role": { "enum": ["source", "style", "test", "asset", "doc", "example"] },
+          "target": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "lines": { "type": "integer", "minimum": 0 },
+          "port": { "enum": ["verbatim", "adapt", "rename-strings-only"] },
+          "renameables": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "dependsOn": {
+      "type": "object",
+      "properties": {
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$" },
+              "range": { "type": "string" }
+            }
+          }
+        },
+        "npm": { "$ref": "#/$defs/packages" },
+        "python": { "$ref": "#/$defs/packages" },
+        "cargo": { "$ref": "#/$defs/packages" },
+        "tokens": { "type": "array", "items": { "type": "string" } },
+        "css": { "type": "array", "items": { "type": "string" } },
+        "routes": { "type": "array", "items": { "type": "string" } },
+        "tauriCommands": { "type": "array", "items": { "type": "string" } },
+        "env": { "type": "array", "items": { "type": "string" } },
+        "permissions": { "type": "array", "items": { "type": "string" } },
+        "runtime": { "type": "object" }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "severity"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" },
+          "severity": { "enum": ["must", "should"] },
+          "check": {
+            "type": "object",
+            "required": ["kind", "spec"],
+            "properties": {
+              "kind": { "enum": ["grep", "test", "command"] },
+              "spec": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "ownerRules": {
+      "type": "object",
+      "properties": {
+        "owner": { "type": "string" },
+        "reviewers": { "type": "array", "items": { "type": "string" } },
+        "changePolicy": { "enum": ["owner-only", "pr-to-origin", "fork-allowed"] },
+        "declined": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["idea", "reason"],
+            "properties": {
+              "idea": { "type": "string" },
+              "reason": { "type": "string" },
+              "date": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "license": { "type": "string" },
+    "thirdParty": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "spdx": { "type": "string" },
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "copies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["repo", "path", "qualified", "lines", "relation", "score"],
+        "properties": {
+          "repo": { "type": "string" },
+          "path": { "type": "string" },
+          "qualified": { "type": "string" },
+          "lines": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 2, "maxItems": 2 },
+          "relation": { "enum": ["clone-T1", "clone-T2", "clone-T3", "related-similar", "related-same_name"] },
+          "score": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "snippet"],
+        "properties": {
+          "title": { "type": "string" },
+          "language": { "type": "string" },
+          "snippet": { "type": "string" },
+          "whenToUse": { "type": "string" }
+        }
+      }
+    },
+    "import": { "type": "string" },
+    "docs": { "type": "string" },
+    "meta": { "type": "object" }
+  },
+  "$defs": {
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "range": { "type": "string" }
+        }
+      }
+    }
+  }
+}

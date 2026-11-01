@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use crate::http::{Reply, Request};
 use crate::store::Store;
-use crate::{CONTRACT, VERSION, config, corpus};
+use crate::{CONTRACT, VERSION, config, corpus, slots};
 
 static INDEXING: Mutex<()> = Mutex::new(());
 
@@ -47,6 +47,8 @@ pub fn route(req: &Request) -> Reply {
         ("GET", ["api", "corpus", id, "stats"]) => {
             with_store(|store| serde_json::to_value(corpus::stats(store, id)?).map_err(|e| e.to_string()))
         }
+        ("GET", ["api", "slots"]) => slots::web::list(&req.query),
+        ("GET", ["api", "slots", id]) => slots::web::get(id),
         _ => Reply::error(404, "not_found", "No such route."),
     }
 }

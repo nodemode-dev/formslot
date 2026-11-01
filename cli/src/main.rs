@@ -5,6 +5,7 @@ use std::time::Duration;
 
 mod corpus_cmd;
 mod dedup_cmd;
+mod slot_cmd;
 mod symbols_cmd;
 
 use formslot_core::discovery::{self, ServiceInfo};
@@ -26,6 +27,16 @@ const HELP: &str = "formslot: the Form family's context service
   refs <name> <symbol>                      every edge that points at a name
   dupes <name> | dupes --across <a> <b>     clone groups and near-duplicates by tier
   drift <a> <b>                             how shared code differs between two corpora
+  slot list [--status S]            the slots in the store
+  slot get <id> [--json]            one slot: files, copies, events
+  slot seed <dir>                   import a folder of manifests as proposed
+  slot refresh <id|--all> --corpus <name>   hashes, lines, contentHash and copies from a corpus
+  slot propose <file.json>          store a proposal
+  slot confirm <id> --owner         the owner makes a slot canonical
+  slot decline <id> --owner --reason <text>   the owner declines a slot
+  slot plan --repo <path> <id>... [--force]  files, targets and order for a consumer
+  slot apply --repo <path> <id>... [--dry-run] [--force]   write slots.lock.json only
+  slot drift --repo <path> [--infer] [--check] [--json]   clean, local, behind, diverged, missing
   version    print the version
   help       this text
 
@@ -62,6 +73,7 @@ fn main() -> ExitCode {
         "stats" => corpus_cmd::stats(&args[1..]),
         "files" => corpus_cmd::files(&args[1..]),
         "family" => corpus_cmd::family(&args[1..]),
+        "slot" => slot_cmd::run(&args[1..]),
         "symbols" => symbols_cmd::symbols(&args[1..]),
         "show" => symbols_cmd::show(&args[1..]),
         "refs" => symbols_cmd::refs(&args[1..]),
