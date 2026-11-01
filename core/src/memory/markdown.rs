@@ -144,6 +144,57 @@ pub fn sections(text: &str) -> Vec<Section> {
     out
 }
 
+#[derive(Debug, Clone)]
+pub struct Row {
+    pub line: usize,
+    pub cells: Vec<String>,
+    pub trail: Vec<(usize, String)>,
+}
+
+pub fn table_rows(text: &str) -> Vec<Row> {
+    let heading = Regex::new(r"^(#{1,6})\s+(.*?)\s*#*\s*$").expect("heading pattern");
+    let mut out: Vec<Row> = Vec::new();
+    let mut trail: Vec<(usize, String)> = Vec::new();
+    let mut fenced = false;
+    for (index, raw) in text.split('\n').enumerate() {
+        let line = raw.trim_end_matches('\r');
+        if is_fence(line) {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced {
+            continue;
+        }
+        if let Some(caps) = heading.captures(line) {
+            let level = caps[1].len();
+            trail.retain(|(l, _)| *l < level);
+            trail.push((level, caps[2].to_string()));
+            continue;
+        }
+        let t = line.trim();
+        if !t.starts_with('|') {
+            continue;
+        }
+        let cells: Vec<String> = t
+            .trim_matches('|')
+            .split('|')
+            .map(|c| c.trim().to_string())
+            .collect();
+        if cells.iter().all(|c| c.chars().all(|ch| ch == '-' || ch == ':' || ch == ' ')) {
+            continue;
+        }
+        if cells.iter().filter(|c| !c.is_empty()).count() < 2 {
+            continue;
+        }
+        out.push(Row {
+            line: index + 1,
+            cells,
+            trail: trail.clone(),
+        });
+    }
+    out
+}
+
 pub fn clip_words(text: &str, count: usize, max_chars: usize) -> String {
     let mut out = String::new();
     for (i, word) in text.split_whitespace().enumerate() {

@@ -184,3 +184,11 @@ The S7 exit slot: formvis's Preferences dialog shell (SettingsDialog in frontend
 
 `recall` and packs listed the same HASHOUT text several times (ids 366-369 and 370-372 of the formvis store): `hashout::parse` gives an entry with several `refers-to` targets one record per anchor, each with its own content hash because the anchor is part of it. Ingest was not changed: the records differ by anchor, each anchor is checked for staleness on its own, and owner records and old records are never deleted. The duplicates are folded at read time instead, keyed by a hash of kind, authority, title and text, best-ranked first (a query with `--anchor` keeps the record ranked first, which the anchor filter has already narrowed). `recall "fvd projects thumbnails"` showed the entry four times before and once after.
 
+### core/src/memory/ingest.rs · doc_items, Class::Doc
+
+- refers-to: core/src/memory/ingest.rs :: doc_items
+- kind: rationale
+- logged: v0.11.0 · 2026-10-30
+
+Ingest read only CLAUDE.md, AGENTS.md, one-level SKILL.md (items under a laws heading), NOTICE.md (items under four headings), HASHOUT logs, BUILD_NOTES and dev-wise. On the held-out gold 14 of the 49 convention and decline phrases were not in the store at all: sub-skill files (`.claude/skills/*/sub-skills/*/SUB-SKILL.md`, `references/*.md`), NOTICE table rows ("build tool only", "the CA bundle file is shipped unedited") and `docs/*.md` (MCP.md: "no tool writes files"). New `Class::Doc` covers every Markdown file under `.claude/skills/` and under `docs/` except `docs/eval/`; NOTICE.md also gets its other blocks and its table rows. Each paragraph, list item and table row under a heading becomes a derived `how-to` record (heading: first words as title, full text as text), so none of them can join the owner rules in P0 (those stay kind rule, authority owner) and none carry triggers, so the PreToolUse check does not act on them. Table rows come from the new `markdown::table_rows`, which skips separator rows and rows with fewer than two filled cells. Counts after `memory ingest`: subform 1148 to 1484 records, formslot 430 to 665, formvis 6300 to 8272. data/declines.json phrases (h081, h082, formMCP specs) are still not memory: that file holds formMCP's specs, not formslot's own rules, and reading it as formslot's would be a decision for the owner.
+

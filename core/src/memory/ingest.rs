@@ -63,6 +63,7 @@ enum Class {
     DevWise,
     Skill,
     Changelog,
+    Doc,
 }
 
 fn classify(path: &str, role: &str) -> Option<Class> {
@@ -98,6 +99,13 @@ fn classify(path: &str, role: &str) -> Option<Class> {
     let parts: Vec<&str> = path.split('/').collect();
     if parts.len() == 4 && parts[0] == ".claude" && parts[1] == "skills" && parts[3] == "SKILL.md" {
         return Some(Class::Skill);
+    }
+    if lower.ends_with(".md") {
+        let skill_tree = path.starts_with(".claude/skills/");
+        let docs_tree = path.starts_with("docs/") && !path.starts_with("docs/eval/");
+        if skill_tree || docs_tree {
+            return Some(Class::Doc);
+        }
     }
     None
 }
@@ -168,6 +176,47 @@ fn rule_items(path: &str, text: &str, authority: &'static str, only: Option<&Reg
             anchor: None,
             path: path.to_string(),
             line: block.line,
+            triggers: String::new(),
+            valid_from: None,
+        });
+    }
+    out
+}
+
+fn doc_items(path: &str, text: &str, skip: Option<&Regex>) -> Vec<Item> {
+    let mut out = Vec::new();
+    for block in markdown::blocks(text) {
+        if block.trail.is_empty() {
+            continue;
+        }
+        if let Some(pattern) = skip
+            && block.under(pattern)
+        {
+            continue;
+        }
+        out.push(Item {
+            kind: "how-to",
+            authority: "derived",
+            title: format!("{}: {}", block.heading(), clip_words(&block.text, 9, 90)),
+            text: block.text.clone(),
+            anchor: None,
+            path: path.to_string(),
+            line: block.line,
+            triggers: String::new(),
+            valid_from: None,
+        });
+    }
+    for row in markdown::table_rows(text) {
+        let heading = row.trail.last().map(|(_, t)| t.as_str()).unwrap_or("");
+        let joined = row.cells.join(" · ");
+        out.push(Item {
+            kind: "how-to",
+            authority: "derived",
+            title: format!("{}: {}", heading, clip_words(&joined, 9, 90)),
+            text: joined,
+            anchor: None,
+            path: path.to_string(),
+            line: row.line,
             triggers: String::new(),
             valid_from: None,
         });
@@ -523,7 +572,11 @@ fn gather(conn: &Connection, repo: &Repo, corpus_id: i64, units: &Units) -> crat
         match class {
             Class::Claude | Class::Agents => items.extend(rule_items(path, text, "owner", None, false)),
             Class::Skill => items.extend(rule_items(path, text, "owner", Some(&laws), true)),
-            Class::Notice => items.extend(rule_items(path, text, "owner", Some(&notice), false)),
+            Class::Notice => {
+                items.extend(rule_items(path, text, "owner", Some(&notice), false));
+                items.extend(doc_items(path, text, Some(&notice)));
+            }
+            Class::Doc => items.extend(doc_items(path, text, None)),
             Class::Hashout => items.extend(hashout_items(path, text, units)),
             Class::Build => items.extend(build_items(path, text)),
             Class::DevWise => items.extend(dev_wise_items(path, text)),
