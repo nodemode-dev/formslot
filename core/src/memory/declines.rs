@@ -57,6 +57,9 @@ fn parse(text: &str, origin: &str) -> crate::Result<Vec<Spec>> {
         if spec.title.trim().is_empty() || spec.find.is_empty() || spec.find.iter().any(|f| f.trim().is_empty()) {
             return Err(format!("declines: {origin}: every spec needs a title and a non-empty find list"));
         }
+        if let Some(short) = spec.triggers.split(',').map(str::trim).find(|t| t.chars().count() < 4) {
+            return Err(format!("declines: {origin}: trigger {short:?} in {:?} is shorter than 4 characters and would match ordinary code", spec.title));
+        }
     }
     Ok(sheet.specs)
 }
@@ -138,8 +141,12 @@ fn locate(spec: &Spec, files: &[(String, String)]) -> Option<Hit> {
     None
 }
 
-pub fn scan(files: &[(String, String)]) -> crate::Result<Vec<Hit>> {
-    Ok(specs()?.iter().filter_map(|spec| locate(spec, files)).collect())
+pub fn scan(files: &[(String, String)], corpus: &str) -> crate::Result<Vec<Hit>> {
+    Ok(specs()?
+        .iter()
+        .filter(|spec| spec.corpus.is_empty() || spec.corpus.eq_ignore_ascii_case(corpus))
+        .filter_map(|spec| locate(spec, files))
+        .collect())
 }
 
 pub fn check(files: &[(String, String)], corpus: &str) -> crate::Result<Vec<Check>> {

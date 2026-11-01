@@ -231,7 +231,11 @@ pub fn get(args: &Value) -> Result<Value, String> {
         "events": events.iter().skip(events.len().saturating_sub(shown_events)).cloned().collect::<Vec<_>>(),
     });
     if more {
-        fields["manifest"] = slot.clone();
+        let mut manifest = slot.clone();
+        if let Some(object) = manifest.as_object_mut() {
+            object.remove("copies");
+        }
+        fields["manifest"] = manifest;
     }
     let plan = Listing {
         kind: "get",

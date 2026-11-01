@@ -119,7 +119,7 @@ pub fn listing(plan: Listing, total: usize, render: &mut dyn FnMut(usize) -> Ite
         return Err("The cursor is past the end of the list. Call again without a cursor.".to_string());
     }
     let budget_bytes = (PAGE_TOKENS * 36) / 10;
-    let mut used = plan.header.len() + 512;
+    let mut used = plan.header.len() + plan.fields.to_string().len() + 512;
     let mut texts: Vec<String> = Vec::new();
     let mut data: Vec<Value> = Vec::new();
     let mut index = start;

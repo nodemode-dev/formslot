@@ -3,7 +3,25 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 use serde::Serialize;
 
-use super::{Filter, Record, estimate_tokens, list, sql, words};
+use super::{Filter, Record, estimate_tokens, list, sql};
+
+fn root(word: &str) -> String {
+    let n = word.len();
+    if n > 4 && word.ends_with("ies") {
+        return format!("{}y", &word[..n - 3]);
+    }
+    if n > 4 && ["shes", "ches", "xes", "sses", "zzes"].iter().any(|e| word.ends_with(e)) {
+        return word[..n - 2].to_string();
+    }
+    if n > 3 && word.ends_with('s') && !word.ends_with("ss") && !word.ends_with("us") {
+        return word[..n - 1].to_string();
+    }
+    word.to_string()
+}
+
+fn words(text: &str) -> Vec<String> {
+    super::words(text).iter().map(|w| root(w)).collect()
+}
 
 pub const ANCHOR_BUDGET: usize = 2000;
 const RESERVE_CHARS: usize = 220;

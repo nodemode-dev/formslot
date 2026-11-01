@@ -211,12 +211,29 @@ fn read_optional(path: &Path) -> crate::Result<Option<String>> {
     }
 }
 
-fn write_atomic(path: &Path, text: &str) -> crate::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+fn no_link(path: &Path) -> crate::Result<()> {
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(format!("refused: {} is a symbolic link", path.display()));
     }
-    let temp: PathBuf = path.with_extension("json.formslot-tmp");
-    std::fs::write(&temp, text).map_err(|e| format!("cannot write {}: {e}", temp.display()))?;
+    Ok(())
+}
+
+fn write_atomic(path: &Path, text: &str) -> crate::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        no_link(dir)?;
+        std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        no_link(dir)?;
+    }
+    no_link(path)?;
+    let unique = format!("json.formslot-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+    let temp: PathBuf = path.with_extension(unique);
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temp).map_err(|e| format!("cannot write {}: {e}", temp.display()))?;
+    if let Err(e) = file.write_all(text.as_bytes()) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(format!("cannot write {}: {e}", temp.display()));
+    }
+    drop(file);
     std::fs::rename(&temp, path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
         format!("cannot write {}: {e}", path.display())
@@ -284,6 +301,7 @@ pub fn install(repo: &Path, mode: Mode, dry_run: bool) -> crate::Result<Report> 
         return Err(format!("{} is not a folder", repo.display()));
     }
     let mut lines: Vec<String> = Vec::new();
+    no_link(&repo.join(".claude"))?;
     let settings_path = repo.join(".claude").join("settings.json");
     let settings = read_optional(&settings_path)?;
     let (settings_text, changes) = match &settings {
@@ -313,6 +331,7 @@ pub fn install(repo: &Path, mode: Mode, dry_run: bool) -> crate::Result<Report> 
     } else {
         lines.push(format!("{}: {verb} ({mcp_note})", mcp_path.display()));
     }
+    lock_step(repo, dry_run, &mut lines)?;
     if !dry_run {
         if !settings_same {
             write_atomic(&settings_path, &settings_text)?;
@@ -321,6 +340,5 @@ pub fn install(repo: &Path, mode: Mode, dry_run: bool) -> crate::Result<Report> 
             write_atomic(&mcp_path, &mcp_text)?;
         }
     }
-    lock_step(repo, dry_run, &mut lines)?;
     Ok(Report { lines })
 }

@@ -22,7 +22,7 @@
       "pick": [
         "poisson blending"
       ],
-      "triggers": "poisson, poisson blending, gradient-domain blending, gradient domain blending, live fill, content-aware move, fill the vacated area"
+      "triggers": "poisson blending, poisson blend, poisson image editing, gradient-domain blending, gradient domain blending, live fill, content-aware move, fill the vacated area"
     },
     {
       "title": "Other image or model providers are declined: one cloud provider by design, fal",
@@ -34,7 +34,7 @@
         "cloud provider",
         "providers are declined"
       ],
-      "triggers": "replicate, wavespeed, wavespeedai, comfy cloud, comfy router, comfy partner api, openrouter, toapis, byteplus, oxen.ai, magnific, another image provider, other image provider, other model provider, new cloud provider, add a provider"
+      "triggers": "replicate api, replicate.com, replicate provider, wavespeed, wavespeedai, comfy cloud, comfy router, comfy partner api, openrouter, toapis, byteplus, oxen.ai, magnific, another image provider, other image provider, other model provider, new cloud provider, add a cloud provider, add an image provider"
     },
     {
       "title": "The three-star sparkle icon is banned app-wide",

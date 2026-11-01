@@ -330,23 +330,19 @@ fn post_tool(target: &Target, value: &Value, session: &str) {
             state.written.push(rel);
             save(session, &state);
         }
+        spawn_reindex(&target.name);
     }
-    spawn_reindex(&target.name);
 }
 
 fn spawn_reindex(name: &str) {
     let dir = state_dir();
     let _ = std::fs::create_dir_all(&dir);
-    let stamp = dir.join(format!("reindex-{}.stamp", safe(name)));
-    let fresh = std::fs::metadata(&stamp)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age.as_secs() < REINDEX_GAP);
-    if fresh {
+    let window = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() / REINDEX_GAP).unwrap_or(0);
+    let stamp = dir.join(format!("reindex-{}-{window}.stamp", safe(name)));
+    if std::fs::OpenOptions::new().write(true).create_new(true).open(&stamp).is_err() {
         return;
     }
-    let _ = std::fs::write(&stamp, b"");
+    let _ = std::fs::remove_file(dir.join(format!("reindex-{}-{}.stamp", safe(name), window.saturating_sub(1))));
     let Ok(exe) = std::env::current_exe() else { return };
     let mut cmd = Command::new(exe);
     cmd.arg("reindex").arg(name).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());

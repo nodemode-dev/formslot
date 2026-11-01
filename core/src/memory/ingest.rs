@@ -531,7 +531,10 @@ fn gather(conn: &Connection, repo: &Repo, corpus_id: i64, units: &Units) -> crat
         }
     }
     let ordered = decline_files(&texts);
-    for hit in declines::scan(&ordered)? {
+    let corpus_name: String = conn
+        .query_row("SELECT name FROM corpus WHERE id = ?1", params![corpus_id], |r| r.get(0))
+        .map_err(sql)?;
+    for hit in declines::scan(&ordered, &corpus_name)? {
         items.push(Item {
             kind: "declined",
             authority: "owner",

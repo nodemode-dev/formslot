@@ -158,7 +158,8 @@ fn doc_path(rel: &str) -> bool {
         Some((s, e)) => (s.to_string(), e.to_string()),
         None => (name.clone(), String::new()),
     };
-    DOC_EXTENSIONS.contains(&ext.as_str()) || DOC_NAMES.contains(&stem_part.as_str()) || rel.starts_with("docs/")
+    let doc_ext = ext.is_empty() || DOC_EXTENSIONS.contains(&ext.as_str());
+    DOC_EXTENSIONS.contains(&ext.as_str()) || (doc_ext && DOC_NAMES.contains(&stem_part.as_str())) || rel.starts_with("docs/")
 }
 
 pub struct Decline {
@@ -168,7 +169,7 @@ pub struct Decline {
 }
 
 pub fn declines(conn: &Connection, corpus_id: i64) -> crate::Result<Vec<Record>> {
-    memory::list(
+    let mut records = memory::list(
         conn,
         &Filter {
             kind: Some("declined".to_string()),
@@ -176,7 +177,15 @@ pub fn declines(conn: &Connection, corpus_id: i64) -> crate::Result<Vec<Record>>
             corpus_id: Some(corpus_id),
             ..Filter::default()
         },
-    )
+    )?;
+    if let Ok(specs) = memory::declines::specs() {
+        for record in &mut records {
+            if let Some(spec) = specs.iter().find(|s| s.title == record.title) {
+                record.triggers = spec.triggers.clone();
+            }
+        }
+    }
+    Ok(records)
 }
 
 pub fn find_decline(
@@ -457,10 +466,11 @@ pub fn evaluate(conn: &Connection, req: &Request, mode: Mode, started: Instant) 
     let Some(rel) = relative(&corpus, &req.path) else {
         return Ok(Verdict::Allow);
     };
-    let existing = if req.old_text.is_none() { read_existing(&req.path) } else { None };
+    let existing = read_existing(&req.path);
     let file_exists = existing.is_some() || req.old_text.is_some() || Path::new(&req.path).exists();
     let old_text: String = match (&req.old_text, &existing) {
-        (Some(o), _) => o.clone(),
+        (Some(o), Some(e)) => format!("{o}\n{e}"),
+        (Some(o), None) => o.clone(),
         (None, Some(e)) => e.clone(),
         _ => String::new(),
     };
