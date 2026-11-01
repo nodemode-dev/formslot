@@ -16,7 +16,14 @@ Crates added directly, with the versions in `Cargo.lock`. Each runs in the distr
 | sha2 | 0.10.9 | MIT OR Apache-2.0 | distributed binary | content digests for the corpus store (`core`) |
 | getrandom | 0.4.3 | MIT OR Apache-2.0 | distributed binary | the access token, from the operating system's random source (`core`) |
 | regex | 1.13.1 | MIT OR Apache-2.0 | distributed binary | secret shapes in redaction (`core`) |
-| rusqlite | 0.41.1 | MIT | distributed binary | the corpus store (`core`); its bundled SQLite (libsqlite3-sys 0.39.1) is public domain |
+| rusqlite | 0.41.1 | MIT | distributed binary | the corpus store (`core`, `cli`); its bundled SQLite (libsqlite3-sys 0.39.1) is public domain |
+| tree-sitter | 0.27.1 | MIT | distributed binary | parsing source files for symbols (`core`) |
+| tree-sitter-typescript | 0.23.2 | MIT | distributed binary | TypeScript and TSX grammar (`core`) |
+| tree-sitter-python | 0.25.0 | MIT | distributed binary | Python grammar (`core`) |
+| tree-sitter-rust | 0.24.2 | MIT | distributed binary | Rust grammar (`core`) |
+| tree-sitter-css | 0.25.0 | MIT | distributed binary | CSS grammar (`core`) |
+| tree-sitter-html | 0.23.2 | MIT | distributed binary | HTML grammar (`core`) |
+| blake3 | 1.8.7 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception; used under Apache-2.0 | distributed binary | identity hashes for dedup (`core`) |
 
 ## Derived from formMCP
 

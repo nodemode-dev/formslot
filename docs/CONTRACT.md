@@ -81,6 +81,13 @@ The `formslot` launcher at the repository root builds `formslot-cli` on first us
 | `formslot stats <name> [--json]` | v0.2.0 |
 | `formslot files <name> [--role <role>] [--language <lang>]` | v0.2.0 |
 | `formslot family --family-json <path> [--check]` | v0.2.0 |
+| `formslot symbols <name> [--lang L] [--kind K] [--exported] [--count]` | v0.4.0 |
+| `formslot show <name> <path>#<qualified>` | v0.4.0 |
+| `formslot refs <name> <symbol>` | v0.4.0 |
+| `formslot dupes <name>` and `formslot dupes --across <a> <b> [--limit N]` | v0.4.0 |
+| `formslot drift <a> <b> [--all]` | v0.4.0 |
+
+Unit kinds (v0.4.0): `function`, `method`, `class`, `interface`, `type`, `enum`, `namespace`, `const` (an exported TypeScript constant), `constant` (an UPPER_CASE module-level Python name or a Rust const), `struct`, `trait`, `static`, `mod`, `tauri_command`, `custom_property`, `selector`, `element_id`, `script`, `style`. Edge kinds: `import`, `call`, `type`, `invoke`, `css_var`. Clone tiers: `T1` same text, `T2` same normalised tokens, `T3` near duplicate (estimated Jaccard at least 0.70). Drift states: `identical`, `renamed`, `drifted`, `diverged`. A unit's stable id is `formslot <repo> <path>#<qualified>~<sig8>`.
 
 ## Later, fixed now so clients can plan
 
@@ -94,3 +101,4 @@ These land in later phases; names and shapes are fixed here and change only with
 
 - 1 · 2026-10-30 · first version, written in Phase S1
 - 1 · 2026-10-30 · v0.2.1, compatible tightening after review: duplicate checked headers, targets without a leading slash and relative corpus paths are 400; `Corpus.remote` never carries credentials
+- 1 · 2026-10-30 · v0.4.0, additive: the symbol, refs, dupes and drift commands, with their unit kinds, edge kinds, tiers, drift states and the stable id form
