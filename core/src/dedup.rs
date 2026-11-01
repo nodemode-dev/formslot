@@ -753,6 +753,20 @@ fn band_key(rows: &[u32]) -> u64 {
 }
 
 pub fn link(conn: &Connection) -> crate::Result<LinkStats> {
+    conn.execute_batch("SAVEPOINT dedup_link").map_err(sql)?;
+    match link_all(conn) {
+        Ok(stats) => {
+            conn.execute_batch("RELEASE dedup_link").map_err(sql)?;
+            Ok(stats)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK TO dedup_link; RELEASE dedup_link");
+            Err(e)
+        }
+    }
+}
+
+fn link_all(conn: &Connection) -> crate::Result<LinkStats> {
     let begin = Instant::now();
     let mut stats = LinkStats::default();
     let occs: Vec<Occ> = load_occs(conn, None)?
@@ -760,7 +774,6 @@ pub fn link(conn: &Connection) -> crate::Result<LinkStats> {
         .filter(|o| o.tokens >= MIN_GROUP_TOKENS)
         .collect();
     stats.units = occs.len();
-    conn.execute_batch("SAVEPOINT dedup_link").map_err(sql)?;
     let tx = conn;
     tx.execute_batch("DELETE FROM clone_member; DELETE FROM clone_group; DELETE FROM clone_pair;")
         .map_err(sql)?;
@@ -928,7 +941,6 @@ pub fn link(conn: &Connection) -> crate::Result<LinkStats> {
             }
         }
     }
-    tx.execute_batch("RELEASE dedup_link").map_err(sql)?;
     stats.millis = begin.elapsed().as_millis() as u64;
     Ok(stats)
 }
