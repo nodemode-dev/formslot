@@ -1290,6 +1290,8 @@ Subform's testing found that after the owner answers Adapt or Use at a gate for 
 
 `slot_source` bypasses `page::text_result` on purpose: that helper holds a result under 25,000 tokens and drops structured content that is over half of it, which would cut file text, and Claude Code itself truncates an MCP result near that size. So the tool carries its own caps: 64 KiB per file as in the engine, 72 KiB per call (the engine's 256 KiB is for the command and the route), one text block per file holding the envelope JSON, a header block with the summary, exports and conventions, and `structuredContent` without the file texts so nothing is sent twice. The header names the omitted paths so the agent can fetch each with `file`. Both the header and the structured content pass `redact` again. The tool description tells the agent to call it after Use or Adapt and to honour the copy verdict and port mode. `slot_source` is listed beside `slot_get`, readOnly, and the server instructions and the unknown-tool message now say nine tools.
 
+Correction (same day): the first version returned `structuredContent` with the file texts removed. A live Claude Code run showed that when `structuredContent` is present the client hands the model only that, so the model got 5742 characters of metadata and no source. The tool now returns no `structuredContent` at all: the header block and one envelope block per file are the whole answer, with the same 64 KiB per file and 72 KiB per call caps. The `redact::value` pass on the structured copy is gone with it; every block was already redacted by the engine (files) or `redact::text` (header).
+
 ### core/src/slots/web.rs · source
 
 - refers-to: core/src/slots/web.rs :: source, file_filter; core/src/api.rs :: route, allowed

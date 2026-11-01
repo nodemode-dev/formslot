@@ -265,7 +265,7 @@ pub fn source(args: &Value) -> Result<Value, String> {
         return Err(format!("{id} is not a slot id (lowercase dotted kebab such as ui.control-rows); slot_find searches by words"));
     }
     let caps = source::Caps { file: source::FILE_CAP, total: SOURCE_TOTAL };
-    let Some(mut value) = source::read(store.conn(), &id, file.as_deref(), caps)? else {
+    let Some(value) = source::read(store.conn(), &id, file.as_deref(), caps)? else {
         return Err(format!("No slot {id}; slot_find searches by words, and resources/list lists every slot"));
     };
     let files = value["files"].as_array().cloned().unwrap_or_default();
@@ -307,16 +307,8 @@ pub fn source(args: &Value) -> Result<Value, String> {
     for f in &files {
         blocks.push(serde_json::to_string(f).map_err(|e| e.to_string())?);
     }
-    if let Some(list) = value["files"].as_array_mut() {
-        for f in list.iter_mut() {
-            if let Some(o) = f.as_object_mut() {
-                o.remove("text");
-            }
-        }
-    }
-    redact::value(&mut value);
     let content: Vec<Value> = blocks.into_iter().map(|b| json!({ "type": "text", "text": b })).collect();
-    Ok(json!({ "content": content, "isError": false, "structuredContent": value }))
+    Ok(json!({ "content": content, "isError": false }))
 }
 
 fn copy_line(c: &Value, n: usize) -> String {
