@@ -81,7 +81,7 @@ impl Licence {
 
 fn header_regex() -> &'static Regex {
     static CELL: OnceLock<Regex> = OnceLock::new();
-    CELL.get_or_init(|| Regex::new(r"SPDX-License-Identifier:\s*(.+)").expect("header regex"))
+    CELL.get_or_init(|| Regex::new(r"(?m)^\s*(?://|#|/\*|\*|<!--|--|;)?\s*SPDX-License-Identifier:\s*([A-Za-z0-9.+()\- ]+?)\s*(?:\*/|-->)?\s*$").expect("header regex"))
 }
 
 fn toml_licence_regex() -> &'static Regex {
