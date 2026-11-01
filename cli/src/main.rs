@@ -5,6 +5,7 @@ use std::time::Duration;
 
 mod corpus_cmd;
 mod dedup_cmd;
+mod memory_cmd;
 mod slot_cmd;
 mod symbols_cmd;
 
@@ -37,6 +38,10 @@ const HELP: &str = "formslot: the Form family's context service
   slot plan --repo <path> <id>... [--force]  files, targets and order for a consumer
   slot apply --repo <path> <id>... [--dry-run] [--force]   write slots.lock.json only
   slot drift --repo <path> [--infer] [--check] [--json]   clean, local, behind, diverged, missing
+  memory ingest <corpus>            read rules, declines, HASHOUT entries and decisions into memory records
+  memory list [--kind K] [--status S] [--corpus C] [--limit N] [--count] [--json]   the records
+  recall <query> [--anchor path#symbol] [--kind K] [--corpus C] [--limit N] [--json]   ranked records, with a token estimate
+  remember --propose <text> [--anchor path#symbol] [--kind decision|how-to]   store a proposal and print NOOP, MERGE, SUPERSEDE or ADD
   version    print the version
   help       this text
 
@@ -74,6 +79,9 @@ fn main() -> ExitCode {
         "files" => corpus_cmd::files(&args[1..]),
         "family" => corpus_cmd::family(&args[1..]),
         "slot" => slot_cmd::run(&args[1..]),
+        "memory" => memory_cmd::run(&args[1..]),
+        "recall" => memory_cmd::recall(&args[1..]),
+        "remember" => memory_cmd::remember(&args[1..]),
         "symbols" => symbols_cmd::symbols(&args[1..]),
         "show" => symbols_cmd::show(&args[1..]),
         "refs" => symbols_cmd::refs(&args[1..]),

@@ -12,6 +12,7 @@ pub mod http;
 pub mod hygiene;
 pub mod licence;
 pub mod log;
+pub mod memory;
 pub mod redact;
 pub mod related;
 pub mod select;

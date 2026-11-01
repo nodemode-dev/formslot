@@ -708,6 +708,16 @@ fn index(
     } else if !crate::related::built(&tx)? {
         crate::related::link(&tx)?;
     }
+    let has_memory: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM memory_record WHERE corpus_id = ?1)",
+            params![corpus_id],
+            |row| row.get(0),
+        )
+        .map_err(sql)?;
+    if !unchanged || !has_memory {
+        crate::memory::after_index(&tx, repo, corpus_id)?;
+    }
     tx.execute(
         "DELETE FROM scan_finding WHERE corpus_id = ?1",
         params![corpus_id],

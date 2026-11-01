@@ -1,0 +1,152 @@
+pub struct Spec {
+    pub title: &'static str,
+    pub find: &'static [&'static str],
+    pub pick: &'static [&'static str],
+    pub triggers: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct Hit {
+    pub title: String,
+    pub text: String,
+    pub path: String,
+    pub line: usize,
+    pub triggers: String,
+}
+
+pub const SPECS: &[Spec] = &[
+    Spec {
+        title: "Content-Aware Scale by seam carving and its skin-tone protection are declined for patents",
+        find: &["content-aware scale", "seam carving"],
+        pick: &["seam carving"],
+        triggers: "seam carving, seam-carving, content-aware scale, content aware scale, skin-tone protection, skin tone protection, liquid rescale, smart resize by removing seams, content-aware resize",
+    },
+    Spec {
+        title: "Poisson blending after the adaptive fill and a live fill during the Move drag are declined for patents",
+        find: &["poisson blending"],
+        pick: &["poisson blending"],
+        triggers: "poisson, poisson blending, gradient-domain blending, gradient domain blending, live fill, content-aware move, fill the vacated area",
+    },
+    Spec {
+        title: "Other image or model providers are declined: one cloud provider by design, fal",
+        find: &["one cloud provider by design"],
+        pick: &["cloud provider", "providers are declined"],
+        triggers: "replicate, wavespeed, wavespeedai, comfy cloud, comfy router, comfy partner api, openrouter, toapis, byteplus, oxen.ai, magnific, another image provider, other image provider, other model provider, new cloud provider, add a provider",
+    },
+    Spec {
+        title: "The three-star sparkle icon is banned app-wide",
+        find: &["three-star sparkle", "banned"],
+        pick: &["three-star sparkle"],
+        triggers: "sparkle, sparkles, three-star, three star, sparkle icon, sparkle glyph, ai sparkle, star sparkle",
+    },
+    Spec {
+        title: "No Adobe feature names for new commands, menus, panels, tools or agent tools",
+        find: &["adobe feature name"],
+        pick: &["adobe feature name"],
+        triggers: "adobe feature name, adobe name, adobe names, photoshop name, photoshop feature name, adobe brushes, adobe presets, adobe swatches, adobe icc profiles, vendor help text, traced vendor icons, adobe label",
+    },
+    Spec {
+        title: "The fill's painted sampling area is a preference weight, never a mask that limits the patches",
+        find: &["never store a painted"],
+        pick: &["never store"],
+        triggers: "sampling area mask, limit the fill, restrict fill sampling, mask that limits, exclude the rest of the image, fill limit, painted sampling area, limit where patches",
+    },
+    Spec {
+        title: "The old product name for Selection-Aware Fill does not come back",
+        find: &["do not bring back the old product name"],
+        pick: &["do not bring back", "selection-aware fill in every language"],
+        triggers: "content-aware fill name, content aware fill name, old product name, rename selection-aware fill",
+    },
+    Spec {
+        title: "Liquify's face tools never build, fit or warp a mesh of the face",
+        find: &["liquify's face tools never build"],
+        pick: &["never build"],
+        triggers: "face mesh, liquify face mesh, face-aware liquify, dense landmark, face landmark mesh, face warp mesh, mesh tied to a face",
+    },
+    Spec {
+        title: "formMCP serves the Form family only: no third-party or remote MCP servers",
+        find: &["no third-party or remote mcp servers"],
+        pick: &["no third-party or remote mcp servers"],
+        triggers: "third-party mcp server, remote mcp server, external mcp server, proxy other mcp servers, add an mcp server",
+    },
+    Spec {
+        title: "formMCP suggests and FormPortal installs: no tool that installs, updates or removes an app",
+        find: &["never add a tool that installs"],
+        pick: &["never add a tool that installs"],
+        triggers: "install tool, install an app, update an app, remove an app, uninstall tool, app installer, tool that installs",
+    },
+];
+
+fn sentences(line: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let chars: Vec<char> = line.chars().collect();
+    let mut start = 0usize;
+    let mut depth = 0i32;
+    for (i, ch) in chars.iter().enumerate() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+        let ends = *ch == '.' && depth <= 0 && chars.get(i + 1).is_none_or(|c| c.is_whitespace());
+        if ends {
+            let piece: String = chars[start..=i].iter().collect();
+            out.push(piece.trim().to_string());
+            start = i + 1;
+        }
+    }
+    if start < chars.len() {
+        let piece: String = chars[start..].iter().collect();
+        let piece = piece.trim().to_string();
+        if !piece.is_empty() {
+            out.push(piece);
+        }
+    }
+    out
+}
+
+fn strip_marker(line: &str) -> &str {
+    let t = line.trim_start();
+    for marker in ["- ", "* ", "+ "] {
+        if let Some(rest) = t.strip_prefix(marker) {
+            return rest.trim();
+        }
+    }
+    t.trim()
+}
+
+pub fn scan(files: &[(String, String)]) -> Vec<Hit> {
+    let mut out: Vec<Hit> = Vec::new();
+    for spec in SPECS {
+        let mut found: Option<Hit> = None;
+        'files: for (path, text) in files {
+            for (index, raw) in text.split('\n').enumerate() {
+                let lower = raw.to_lowercase();
+                if !spec.find.iter().all(|needle| lower.contains(needle)) {
+                    continue;
+                }
+                let body = strip_marker(raw.trim_end_matches('\r'));
+                let picked: Vec<String> = sentences(body)
+                    .into_iter()
+                    .filter(|s| {
+                        let l = s.to_lowercase();
+                        spec.pick.iter().any(|p| l.contains(p))
+                    })
+                    .collect();
+                let text = if picked.is_empty() { body.to_string() } else { picked.join(" ") };
+                found = Some(Hit {
+                    title: spec.title.to_string(),
+                    text,
+                    path: path.clone(),
+                    line: index + 1,
+                    triggers: spec.triggers.to_string(),
+                });
+                break 'files;
+            }
+        }
+        if let Some(hit) = found {
+            out.push(hit);
+        }
+    }
+    out
+}
