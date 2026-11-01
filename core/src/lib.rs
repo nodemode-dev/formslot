@@ -6,6 +6,7 @@ pub mod config;
 pub mod corpus;
 pub mod dedup;
 pub mod discovery;
+pub mod eval;
 pub mod facts;
 pub mod family;
 pub mod git;
