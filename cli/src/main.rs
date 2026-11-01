@@ -5,6 +5,7 @@ use std::time::Duration;
 
 mod corpus_cmd;
 mod dedup_cmd;
+mod mcp_cmd;
 mod memory_cmd;
 mod search_cmd;
 mod slot_cmd;
@@ -47,6 +48,7 @@ const HELP: &str = "formslot: the Form family's context service
   search rebuild [--corpus C]       rebuild the search indexes
   map <corpus> [--tokens N] [--formmap]   the ranked repo map, or FORMMAP.md under 150 lines
   pack <task> [--corpus C] [--tokens N] [--tier T1|T4|T16] [--json]   a P0/P1/P2 context pack
+  mcp        serve MCP over stdio (newline-delimited JSON-RPC) for an agent's .mcp.json
   version    print the version
   help       this text
 
@@ -95,6 +97,7 @@ fn main() -> ExitCode {
         "search" => search_cmd::run(&args[1..]),
         "map" => search_cmd::map(&args[1..]),
         "pack" => search_cmd::pack(&args[1..]),
+        "mcp" => mcp_cmd::run(&args[1..]),
         "version" | "--version" | "-V" => {
             println!("formslot {VERSION}");
             ExitCode::SUCCESS

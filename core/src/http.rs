@@ -23,12 +23,14 @@ pub struct Request {
 pub struct Reply {
     pub status: u16,
     pub body: Vec<u8>,
+    pub headers: Vec<(String, String)>,
 }
 
 fn reason(status: u16) -> &'static str {
     match status {
         200 => "OK",
         201 => "Created",
+        202 => "Accepted",
         400 => "Bad Request",
         401 => "Unauthorized",
         403 => "Forbidden",
@@ -45,7 +47,12 @@ fn reason(status: u16) -> &'static str {
 
 impl Reply {
     pub fn json(status: u16, value: &Value) -> Reply {
-        Reply { status, body: value.to_string().into_bytes() }
+        Reply { status, body: value.to_string().into_bytes(), headers: Vec::new() }
+    }
+
+    pub fn with_header(mut self, name: &str, value: &str) -> Reply {
+        self.headers.push((name.to_string(), value.to_string()));
+        self
     }
 
     pub fn ok(value: &Value) -> Reply {
@@ -154,10 +161,11 @@ fn read_request(stream: &TcpStream) -> std::result::Result<Head, Reply> {
 
 fn write_reply(mut stream: &TcpStream, reply: &Reply) {
     let head = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n{}",
         reply.status,
         reason(reply.status),
-        reply.body.len()
+        reply.body.len(),
+        reply.headers.iter().map(|(k, v)| format!("{k}: {v}\r\n")).collect::<String>()
     );
     let _ = stream
         .write_all(head.as_bytes())

@@ -7,7 +7,7 @@ use crate::http::{Reply, Request};
 use crate::store::Store;
 use crate::{CONTRACT, VERSION, config, corpus, slots};
 
-static INDEXING: Mutex<()> = Mutex::new(());
+pub(crate) static INDEXING: Mutex<()> = Mutex::new(());
 
 pub fn route(req: &Request) -> Reply {
     let parts: Vec<&str> = req.path.trim_end_matches('/').split('/').skip(1).collect();
@@ -49,6 +49,8 @@ pub fn route(req: &Request) -> Reply {
         }
         ("GET", ["api", "slots"]) => slots::web::list(&req.query),
         ("GET", ["api", "slots", id]) => slots::web::get(id),
+        ("POST", ["mcp"]) => crate::mcp::http::post(&req.body),
+        (_, ["mcp"]) => Reply::error(405, "method_not_allowed", "POST JSON-RPC messages to /mcp.").with_header("Allow", "POST"),
         _ => Reply::error(404, "not_found", "No such route."),
     }
 }
