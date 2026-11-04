@@ -1,102 +1,175 @@
-<h1 align="center">formslot</h1>
-
-<p align="center"><b>The Form family's memory for coding agents: what is already built, where it lives, and the rules it follows, served in as few tokens as the task needs.</b></p>
-
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.16.0-f97316" alt="version v0.16.0" />
-  <img src="https://img.shields.io/badge/status-release-8b5cf6" alt="status release" />
-  <img src="https://img.shields.io/badge/license-GPL--3.0-555555" alt="license GPL 3.0" />
+  <img src="assets/app-icon/formslot-256.png" width="128" height="128" alt="FormSlot icon">
 </p>
 
-formslot gives Claude Code a memory of your projects: what is already built, where it lives and the rules it follows, so it reuses code instead of rewriting it.
-It runs on your computer, reaches Claude Code over MCP and hooks, and has its window in subform, the family's developer workbench.
+<h1 align="center">FormSlot</h1>
 
-## Install (new users)
+<p align="center">
+  <b>Codebase memory; the Form family's memory for coding agents.</b><br>
+  What is already built, where it lives and the rules it follows,<br>
+  served in as few tokens as the task needs. Rust and SQLite, on your own machine.
+</p>
 
-Double-click `Install formslot.command` (macOS) or `Install formslot.bat` (Windows), or run `./formslot_oc_install` in a terminal. The guided setup does the rest. Read the plain-language guide: [docs/GUIDE.md](docs/GUIDE.md).
+<p align="center">
+  <img alt="version 0.16.2" src="https://img.shields.io/badge/version-0.16.2-eef0f4?style=flat-square">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-1.90%2B-dea584?style=flat-square&logo=rust&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-bundled-0f80cc?style=flat-square">
+  <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
+  <img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-3a3a3a?style=flat-square">
+  <img alt="Status: release" src="https://img.shields.io/badge/status-release-d69e2e?style=flat-square">
+</p>
 
-For scripts: `formslot setup --yes --repo /path/to/project`.
+<p align="center">
+  <a href="https://formai.studio/"><b>Download FormSlot on formai.studio</b></a> ·
+  <a href="#run-it-from-source">Run it from source</a>
+</p>
 
-## Quick start
+<p align="center">
+  <img src="docs/images/formslot-hero.png" alt="Dark terminal showing formslot stats for a repository and a ranked search for toast notification" width="100%">
+  <br>
+  <sub>Real output: language stats for a repository, then a ranked search over its code units and slots.</sub>
+</p>
 
-```bash
-./formslot_oc_install                 # checks git and cargo, builds the release binary
-./formslot add ~/path/to/a/form/repo  # index it at HEAD
-./formslot stats <name>               # files, lines and bytes by language, roles, licences
-./formslot symbols <name> --count     # extracted units
-./formslot refs <name> revealApp      # who uses a symbol
-./formslot dupes <name>               # clone groups and near duplicates
-./formslot dupes <name> --related     # same purpose, different bodies
-./formslot slot seed data/slots       # load the proposed first-load slots
-./formslot slot refresh --all --corpus <name>
-./formslot slot get ui.control-rows   # manifest, files, copies, events
-./formslot slot drift --repo <path> --infer   # vendored copies against their slots
-./formslot dupes --across <a> <b>     # code shared between two repositories
-./formslot memory ingest <name>       # owner rules, declines, HASHOUT entries, decisions
-./formslot recall "seam carving"      # ranked memory records with a token estimate
-./formslot search "colour row" --corpus <name>
-./formslot map <name> --formmap       # FORMMAP.md under 150 lines
-./formslot pack "add a section to the Preferences dialog" --corpus <name> --tokens 4000
-./formslot serve                      # the service on 127.0.0.1:5645
-./formslot status
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#everything-in-the-box">In the box</a> ·
+  <a href="#built-for-agents">Agents</a> ·
+  <a href="#under-the-hood">Under the hood</a> ·
+  <a href="#download">Download</a> ·
+  <a href="#run-it-from-source">Run from source</a>
+</p>
+
+<table>
+  <tr>
+    <td width="25%" valign="top">
+      <h3>Reuse, not rewrite</h3>
+      Slots name the code your repositories already have, so an agent finds it before it writes a second copy.
+    </td>
+    <td width="25%" valign="top">
+      <h3>Rules it remembers</h3>
+      Owner rules, declined approaches and decisions are read from your repository and recalled with a source line.
+    </td>
+    <td width="25%" valign="top">
+      <h3>Small context</h3>
+      A pack for a task fits a token budget you choose, with a byte-stable prefix that caches well.
+    </td>
+    <td width="25%" valign="top">
+      <h3>Agent-ready</h3>
+      The same index answers the CLI, an MCP server on stdio and Claude Code hooks.
+    </td>
+  </tr>
+</table>
+
+## Features
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/formslot-slots.png" alt="Terminal listing slots with their copy counts, then a drift report for a repository" width="100%">
+      <br><sub>Slots with copy counts, then drift of a repository against them.</sub>
+      <h3>Slots and drift</h3>
+      A slot is a manifest for code worth reusing, with its files, hashes and every copy found. Drift says which copies are clean, local, behind or diverged.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/formslot-recall.png" alt="Terminal showing a recalled owner rule and the start of a context pack for a task" width="100%">
+      <br><sub>A recalled owner rule, then the head of a context pack for a task.</sub>
+      <h3>Memory and packs</h3>
+      Recall returns ranked records with a token estimate. A pack joins the slots, memory and code excerpts a task needs under your budget.
+    </td>
+  </tr>
+</table>
+
+## Everything in the box
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <h4>26 first-load slots</h4>
+      Shell CSS · panels and dialogs · toast · prefs store · terminal dock · MCP server · agent bridge · model manager · family laws
+    </td>
+    <td width="33%" valign="top">
+      <h4>5 languages parsed</h4>
+      TypeScript · Python · Rust · CSS · HTML, with a per-repository call and use graph
+    </td>
+    <td width="33%" valign="top">
+      <h4>Ways in</h4>
+      CLI · MCP over stdio and HTTP · Claude Code plugin and hooks · lookup skill · HTTP service on <code>127.0.0.1</code>
+    </td>
+  </tr>
+</table>
+
+## Built for agents
+
+FormSlot has 9 MCP tools (`slot_find`, `slot_get`, `slot_source`, `slot_context_pack` and five more) that read the same store as the CLI and the Claude Code hooks.
+
+```sh
+formslot add ~/code/my-repo                       # index a repository at HEAD
+formslot recall "seam carving"                    # ranked memory records with a token estimate
+formslot pack "add a section to the Preferences dialog" --corpus my-repo --tokens 4000
+formslot mcp                                      # MCP server on stdio for Claude Code, Codex and Cursor
 ```
 
-The data folder is `~/.formslot` (`FORMSLOT_DATA_DIR` moves it); `FORMSLOT_PORT` moves the port, `0` picks a free one.
+`formslot install <repo>` writes the plugin files and hooks into a repository: a map digest at session start, a reuse and declined-feature check before every write, and a duplicate audit at stop. See [`AGENTS.md`](AGENTS.md) and [`docs/CONTRACT.md`](docs/CONTRACT.md).
 
-## Install
+## Under the hood
 
-### From source
+- **Workspace:** Rust 2024 with two crates, `formslot-core` and `formslot-cli`.
+- **Store:** SQLite bundled through rusqlite, with the system git reading objects at a pinned commit.
+- **Search:** bm25 and trigram lists fused with the graph, memory and slots, plus a PageRank repo map.
+- **Evaluated:** `formslot eval` scores recall over a 147-task gold set in [`docs/eval`](docs/eval).
 
-Needs git and Rust 1.90 or later. `./formslot_oc_install` (`formslot_oc_install.bat` on Windows) checks both and builds the release binary; `./formslot` (`formslot.bat`) then runs it, rebuilding when the sources changed.
+## Download
 
-### From a release
+| Platform | Download | Release |
+|---|---|---|
+| macOS | [Download FormSlot for macOS](https://formai.studio/get/formslot/macos) | [FormSlot releases on FormCompiler](https://github.com/nodemode-dev/formcompiler/releases?q=formslot-v&expanded=true) |
+| Windows | [Download FormSlot for Windows](https://formai.studio/get/formslot/windows) | [FormSlot releases on FormCompiler](https://github.com/nodemode-dev/formcompiler/releases?q=formslot-v&expanded=true) |
+| Linux | [Download FormSlot for Linux](https://formai.studio/get/formslot/linux) | [FormSlot releases on FormCompiler](https://github.com/nodemode-dev/formcompiler/releases?q=formslot-v&expanded=true) |
 
-`setup/build_release` (`setup\build_release.bat` on Windows) builds `cargo build --release --locked -p formslot-cli` and stages `dist/formslot-vX.Y.Z-<os>-<arch>/` with the binary named `formslot` (`formslot.exe` on Windows), `LICENSE`, `NOTICE.md`, `README.md`, the installer script, `plugin/formslot/`, `data/` and a `SHA256SUMS` file, then packs it as `.tar.gz` (`.zip` on Windows) beside a `.sha256` file. The release is built on the machine it is for: run the script on macOS (`aarch64` or `x86_64`), on Linux and on Windows. `data/declines.json` is also compiled into the binary; `data/slots/` is read from disk by `formslot slot seed data/slots`, so keep that folder beside the binary.
+All FormSlot builds are compiled and released from [FormCompiler](https://github.com/nodemode-dev/formcompiler); this repo holds the source.
 
-```bash
-tar -xzf formslot-vX.Y.Z-linux-x86_64.tar.gz
-cd formslot-vX.Y.Z-linux-x86_64
-sha256sum -c SHA256SUMS      # shasum -a 256 -c SHA256SUMS on macOS
-./formslot version
+## Run it from source
+
+FormSlot has no window of its own: you use it from a terminal, from Claude Code, or in [SubForm](https://github.com/nodemode-dev/subform), where its panel lives.
+
+**Requires:** git and Rust 1.90 or later.
+
+```sh
+git clone git@github.com:nodemode-dev/formslot.git
+cd formslot
+./formslot_oc_install     # checks git and cargo, builds the release binary
+./formslot setup          # guided first-time setup in plain language
 ```
 
-### On your PATH with `--user`
+On Windows use `formslot_oc_install.bat` and `formslot.bat`. New users can double-click `Install formslot.command` (macOS) or `Install formslot.bat` (Windows). The plain-language guide is [`docs/GUIDE.md`](docs/GUIDE.md).
 
-Claude Code hooks call `formslot`, so it has to be on PATH. `./formslot_oc_install --user` copies the binary to `~/.local/bin/formslot` (macOS and Linux) and `formslot_oc_install.bat --user` copies it to `%LOCALAPPDATA%\Programs\formslot\formslot.exe`. Run from a source checkout it builds first; run from an unpacked release it copies the binary beside it. It prints what it did and, when the folder is not on PATH, the line to add yourself (`export PATH="$HOME/.local/bin:$PATH"`, or a one-line PowerShell command on Windows). It never edits a shell profile or the registry. Without `--user` the installer behaves as before.
+`FORMSLOT_DATA_DIR` moves the data folder from `~/.formslot`; `FORMSLOT_PORT` moves the service port from 5645 (`0` picks a free one).
 
-## Start the service and connect a repository
+> [!IMPORTANT]
+> **Status:** release. The dense search tier is opt-in and off by default. See [`docs/eval`](docs/eval) for the reports.
 
-```bash
-formslot start                 # background service on 127.0.0.1, prints its port and pid
-formslot status
-formslot doctor                # includes a check that hooks can find formslot
-formslot install <repo>        # writes the plugin files and hooks into that repository
-formslot add <repo>            # index it
-```
+**Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to formcompiler. See [`AGENTS.md`](AGENTS.md).
 
-`formslot stop` ends the service; it also stops by itself after ten idle minutes.
+## Repository
 
-## The lookup skill
+| Path | What it is |
+|---|---|
+| `core/` | `formslot-core`: index, search, slots, memory, MCP and the service |
+| `cli/` | `formslot-cli`: the `formslot` command |
+| `plugin/formslot/` | Claude Code plugin, hooks and the lookup skill |
+| `data/` | The 26 proposed slots and the declined approaches |
+| `docs/` | Contract, guide, slot schema and eval reports |
+| `setup/` | Release and skill packaging scripts |
 
-`setup/package_skill` checks `plugin/formslot/skills/formslot-lookup/` against the skill gates (name rules, description of at most 1024 characters, no XML-like tags in the frontmatter, no emoji, no U+2014, no README, exactly one `SKILL.md`; it runs `validate_skill.py` from the god-tier skill creator, found under `~/.claude/skills` or named by `VALIDATE_SKILL`) and writes `dist/formslot-lookup.skill`, a zip with the `formslot-lookup/` folder at its root.
+## Maintainers
 
-## Developer status
+| Maintainer | Role |
+|---|---|
+| [@nodemode-ai](https://github.com/nodemode-ai) | Owner |
+| [@gbarnai](https://github.com/gbarnai) | Co-owner |
 
-**Status:** v0.16.0. v0.16.0 adds `formslot slot suggest`, which drafts proposed slots for code that is copied in several places or used from many files, for the owner to review and pass to `slot propose`; caches the slot table in long-lived processes; fixes `slot_context_pack` and `slot_conventions` as Claude Code sees them; and fuses the optional dense tier into code-unit ranking only (it stays opt-in, see `docs/eval/report_v0.16.0_dense.md`). v0.15.0 adds `slot_source` (a slot's code at its pinned commit, over MCP, the CLI and HTTP), rule slots that count in every repository, a graded weight for other repositories' slots, a stored repo map that makes a one-off pack about a third faster, and a user guide in docs/GUIDE.md. v0.14.0 added `formslot setup --status` and a guided `--remove`, `corpus rename` and `corpus move`, reuse warnings that repeat when the content changes, and search and packs about 3.5 times faster with identical rankings. v0.13.0 added the guided `formslot setup` and double-click installers for new users, slots from other repositories ranked below the searched one's unless they cover the query, and memory owner rules read from the root only. v0.12.0 added a held-out model-arm report (on subform tasks the pack halved tokens, cost and time with pass rate within noise of the baseline). v0.11.0 added a model arm that measures pass rate through Claude Code (formslot 100 percent against 96.7 for the baseline on 30 formvis tasks, with 60 percent fewer input tokens), a held-out gold set from three repositories, search units and memory for Markdown, config and script files (held-out R@4k 0.653 to 0.903 on subform, 0.606 to 0.848 on formslot), and the first full dense run, which stays opt-in. Phases S1 to S11 have landed, S11 being the service lifecycle (start on demand, leases, idle shutdown, `stop`, `doctor`) and packaging (`setup/build_release`, `formslot_oc_install --user`, the lookup skill zip). Earlier phases: the service on 127.0.0.1 with its discovery file and access checks; indexing of git repositories at a commit (file manifest, languages, roles, licences, secret findings, incremental re-index); symbols and a per-repository graph from tree-sitter (TypeScript, Python, Rust, CSS, HTML); duplicate detection in three tiers plus a related band across repositories, with drift between two; and slots: manifests with provenance, hashes and copies, 26 proposed first-load slots in `data/slots/`, owner confirmation, and a `slots.lock.json` with per-file drift for consuming repositories; memory records (owner rules, declined approaches, HASHOUT entries and decisions, with recall, proposals and anchor checks); and retrieval: bm25 and trigram search fused with the graph, memory and slots, a PageRank repo map and FORMMAP.md, and token-budgeted context packs with a byte-stable prefix; an MCP server with eight `slot_*` tools over stdio (`formslot mcp`) and HTTP; and Claude Code hooks and a plugin (`plugin/formslot/`): a map digest at session start, a reuse and declined-feature check before every write, and a duplicate audit at stop, installed into a repository with `formslot install`; and evaluation: `formslot eval` over a 147-task gold set (`docs/eval/`), with an optional dense tier behind the `dense` cargo feature. Packaging and the service lifecycle arrive in later phases; the plan of record ships in the planning sidecar zip. The contract clients build against is `docs/CONTRACT.md`.
+Code owners are set in [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
-**Stack:** Rust (`formslot-core`, `formslot-cli`), SQLite bundled through rusqlite, the system git. Rust 1.90 or later.
+## License
 
-## Where formslot sits in the family
-
-| Role | App |
-| --- | --- |
-| One MCP connection to every Form app | formMCP |
-| The apps' released skills | formskills |
-| Installing and updating apps | FormPortal |
-| Registry and releases | formcompiler |
-| What is already built, and the rules it follows | formslot |
-| The developer workbench and formslot's window | subform |
-
-## Licence
-
-GPL-3.0-only. Copyright (C) 2026 NodeAgentc, Inc. See `LICENSE`.
+FormSlot is licensed under the GNU General Public License v3.0 ([`LICENSE`](LICENSE), SPDX `GPL-3.0-only`). Copyright (C) 2026 NodeAgentc, Inc. Third-party notices: [`NOTICE.md`](NOTICE.md).
