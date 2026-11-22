@@ -20,6 +20,7 @@ pub mod http;
 pub mod hygiene;
 pub mod install;
 pub mod jsonedit;
+pub mod keys;
 pub mod licence;
 pub mod lifecycle;
 pub mod log;
