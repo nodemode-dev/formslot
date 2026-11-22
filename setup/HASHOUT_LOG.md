@@ -89,3 +89,27 @@ formcompiler notarizes and staples disk images only, and signs an unsigned one w
 - logged: v0.16.3 · 2026-11-22
 
 formcompiler builds a commit only when the registry's `checks` (`ci.yml`) concluded success on that exact commit, so the workflow runs on pushes to `main` and `compile_v*`, on pull requests and by hand, and never cancels a run on those branches. Jobs: `cargo test --locked` for the workspace (it compiles both crates; there are no tests yet, by the owner's rule); the Linux release script, with the archive's listing and both checksum files checked and the program asked for its version; the Windows script run once as it stands alone and once with `--no-sums`, as formcompiler runs it, so the `.bat` runs on every commit and not only in a compile; `bash -n` on the shell scripts and the em dash and emoji scan the family uses, reading `git ls-files -z` so the file names with spaces are scanned. Actions are pinned by major version as in the family's other check workflows. The macOS `--dmg` path is not run here (macOS runner minutes); it first runs in the compile.
+
+### formslot, formslot.bat · the twins agree on cargo and on the build folder
+
+- refers-to: formslot :: target
+- kind: rationale
+- logged: v0.16.4 · 2026-11-22
+
+The `.bat` launcher demanded cargo before it looked for the program, so a built checkout stopped working the moment cargo left PATH, while the shell launcher needed cargo only to rebuild. Both now ask the same question in the same order: with cargo on PATH they build what is missing or out of date (the shell launcher compares file times, the `.bat` lets cargo decide, which costs a fraction of a second); with no cargo they run the program that is already built, and only a checkout with no program at all prints the Rust line and exits 1. Both installers build into `CARGO_TARGET_DIR` when it is set, but the launchers looked only in `target/`, so a person with that variable set built a second copy on the first `./formslot`. The launchers now read the same variable; a relative value is taken from the checkout, because that is where they run cargo. The two double-click installers still test `target/release` before calling the installer: with the variable set they call it once more, cargo finds nothing to do, and setup starts.
+
+### .gitignore · only what this repository makes
+
+- refers-to: .gitignore :: target
+- kind: removed-code
+- logged: v0.16.4 · 2026-11-22
+
+The file carried the family template's lines for Node, Python and a Tauri shell (`node_modules/`, `venv/`, `__pycache__/`, `src-tauri/target/`, `build_app.log`, `.env` and others). This repository has none of those. A build writes `target/` and the release and skill scripts write `dist/`; those two lines remain, anchored at the root. The log file is written in the data folder (`core/src/config.rs`), never in the checkout.
+
+### .github/workflows/ci.yml · the launchers run on every commit
+
+- refers-to: .github/workflows/ci.yml :: release-linux
+- kind: rationale
+- logged: v0.16.4 · 2026-11-22
+
+The Linux and Windows release jobs now also run `formslot version` through the launcher after the release script has built the program, and once more with cargo off PATH. The Linux job also sets `CARGO_TARGET_DIR` to a folder outside the checkout and checks that the launcher built there. The Windows steps have not run anywhere yet; the first run on GitHub is their test.

@@ -2,10 +2,19 @@
 set -e
 here="$(cd "$(dirname "$0")" && pwd)"
 
-bin="$here/target/release/formslot-cli"
-if [ ! -x "$bin" ] || [ -n "$(cd "$here" && find cli core Cargo.toml Cargo.lock -newer "$bin" \( -name '*.rs' -o -name '*.sql' -o -name '*.toml' -o -name '*.lock' \) 2>/dev/null | head -1)" ]; then
-  command -v cargo >/dev/null || { echo "Rust is required: https://rustup.rs. Then run ./formslot_oc_install" >&2; exit 1; }
-  [ -x "$bin" ] || echo "First run: building formslot. This takes a few minutes and only happens once." >&2
-  (cd "$here" && cargo build -q --release --locked -p formslot-cli) >&2
+target="${CARGO_TARGET_DIR:-target}"
+case "$target" in
+  /*) ;;
+  *) target="$here/$target" ;;
+esac
+bin="$target/release/formslot-cli"
+if command -v cargo >/dev/null; then
+  if [ ! -x "$bin" ] || [ -n "$(cd "$here" && find cli core Cargo.toml Cargo.lock -newer "$bin" \( -name '*.rs' -o -name '*.sql' -o -name '*.toml' -o -name '*.lock' \) 2>/dev/null | head -1)" ]; then
+    [ -x "$bin" ] || echo "First run: building formslot. This takes a few minutes and only happens once." >&2
+    (cd "$here" && cargo build -q --release --locked -p formslot-cli) >&2
+  fi
+elif [ ! -x "$bin" ]; then
+  echo "Rust is required: https://rustup.rs. Then run ./formslot_oc_install" >&2
+  exit 1
 fi
 exec "$bin" "$@"

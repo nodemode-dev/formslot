@@ -42,6 +42,14 @@ jobs:
           ( cd "$stage" && sha256sum --check --quiet SHA256SUMS )
           ( cd dist && sha256sum --check --quiet "$(basename "$stage").tar.gz.sha256" )
           "$stage/formslot" version
+      - name: The launcher runs the program the release script built
+        run: ./formslot version
+      - name: The launcher builds and runs in CARGO_TARGET_DIR, and runs that build with cargo off PATH
+        run: |
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/formslot-target"
+          ./formslot version
+          test -x "$CARGO_TARGET_DIR/release/formslot-cli"
+          env PATH=/usr/bin:/bin ./formslot version
 
   release-windows:
     runs-on: windows-latest
@@ -76,6 +84,14 @@ jobs:
           if (Test-Path "$($zip.FullName).sha256") { throw 'a .zip.sha256 was left beside the zip' }
           & (Get-ChildItem dist -Recurse -Filter formslot.exe | Select-Object -First 1).FullName version
           if ($LASTEXITCODE -ne 0) { throw 'formslot.exe version failed' }
+      - name: The launcher runs the program the release script built
+        shell: cmd
+        run: call formslot.bat version
+      - name: The launcher runs a built program with cargo off PATH
+        shell: cmd
+        run: |
+          set "PATH=%SystemRoot%\System32;%SystemRoot%"
+          call formslot.bat version
 
   scripts:
     runs-on: ubuntu-latest
