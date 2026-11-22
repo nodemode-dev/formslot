@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 0.18.1" src="https://img.shields.io/badge/version-0.18.1-eef0f4?style=flat-square">
+  <img alt="version 0.18.2" src="https://img.shields.io/badge/version-0.18.2-eef0f4?style=flat-square">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-1.90%2B-dea584?style=flat-square&logo=rust&logoColor=white">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-bundled-0f80cc?style=flat-square">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -139,7 +139,7 @@ Nothing leaves your computer unless you run one of three commands yourself: `pac
 | Windows | [Download FormSlot for Windows](https://formai.studio/get/formslot/windows) | [FormSlot releases](https://github.com/nodemode-dev/formslot/releases) |
 | Linux | [Download FormSlot for Linux](https://formai.studio/get/formslot/linux) | [FormSlot releases](https://github.com/nodemode-dev/formslot/releases) |
 
-[FormCompiler](https://github.com/nodemode-dev/formcompiler) builds and signs every FormSlot release and publishes it on this repository's releases page.
+[FormCompiler](https://github.com/nodemode-dev/formcompiler) builds and signs every FormSlot release and publishes it on this repository's releases page. [`CHANGELOG.md`](CHANGELOG.md) says what each version changed.
 
 ## Run it from source
 
