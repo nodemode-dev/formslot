@@ -65,3 +65,27 @@ Both launchers used to change into the checkout before running the binary, so `f
 - logged: v0.13.0 · 2026-10-30
 
 The installer ends by asking `Run the guided setup now? [Y/n]` only when stdin and stdout are terminals and `FORMSLOT_NO_SETUP_OFFER` is unset, so piped use and the double-click installers behave. The commands it used to print are kept for the non-terminal case. The `.bat` twin asks with `set /p` and runs setup when the answer is empty or starts with y; setup itself refuses without a terminal.
+
+### setup/build_release.bat · --no-sums
+
+- refers-to: setup/build_release.bat :: SUMS
+- kind: rationale
+- logged: v0.16.3 · 2026-11-22
+
+formcompiler signs every unsigned `.exe` inside a release `.zip` after the build and writes the zip again with the signed program in it, then publishes its own `SHA256SUMS.txt` over the files it releases. The `SHA256SUMS` this script wrote inside the folder before zipping then named the unsigned `formslot.exe`, so the shipped file was wrong, and the `.zip.sha256` beside the zip named a zip that no longer existed. `--no-sums` writes neither, and removes a `.zip.sha256` left by an earlier run, so a family build ships no checksum that can go stale; the release's own `SHA256SUMS.txt` covers the zip. Without the option the script behaves as before. The option is a flag rather than a test for formcompiler's environment, so the registry entry says what it wants and a local run never changes by accident. The registry's Windows command is `call setup\build_release.bat --no-sums`. The shell script has no such option: nothing touches the `.tar.gz` after it is written.
+
+### setup/build_release · --dmg and APPLE_SIGNING_IDENTITY
+
+- refers-to: setup/build_release :: dmg
+- kind: rationale
+- logged: v0.16.3 · 2026-11-22
+
+formcompiler notarizes and staples disk images only, and signs an unsigned one with the Developer ID first; Apple's notary refuses an image whose program is not signed with a Developer ID, the hardened runtime and a secure timestamp. So the program is signed here, right after it is staged and before the checksums are written, whenever `APPLE_SIGNING_IDENTITY` is set on macOS (formcompiler's Build step sets it only when its build keychain holds that identity), and `--dmg` packs the staged folder into `formslot-vX.Y.Z-macos-<arch>.dmg` with `hdiutil`, as the family's other disk images are made. The release build has no `dense` feature, so no library is loaded at run time and the hardened runtime needs no entitlement. No `.dmg.sha256` is written, because formcompiler signs and staples the image after the build. The `.tar.gz` is still made and holds the same signed program; its checksums stay true. A bare program cannot carry a stapled ticket, so a copy taken out of the image or the archive is checked online by Gatekeeper on first run. `--dmg` on Linux stops with an error. The registry's macOS command is `setup/build_release --dmg`, and its artifacts gain `dist/formslot-v*-macos-*.dmg`.
+
+### .github/workflows/ci.yml · the check formcompiler waits for
+
+- refers-to: .github/workflows/ci.yml :: ci
+- kind: rationale
+- logged: v0.16.3 · 2026-11-22
+
+formcompiler builds a commit only when the registry's `checks` (`ci.yml`) concluded success on that exact commit, so the workflow runs on pushes to `main` and `compile_v*`, on pull requests and by hand, and never cancels a run on those branches. Jobs: `cargo test --locked` for the workspace (it compiles both crates; there are no tests yet, by the owner's rule); the Linux release script, with the archive's listing and both checksum files checked and the program asked for its version; the Windows script run once as it stands alone and once with `--no-sums`, as formcompiler runs it, so the `.bat` runs on every commit and not only in a compile; `bash -n` on the shell scripts and the em dash and emoji scan the family uses, reading `git ls-files -z` so the file names with spaces are scanned. Actions are pinned by major version as in the family's other check workflows. The macOS `--dmg` path is not run here (macOS runner minutes); it first runs in the compile.

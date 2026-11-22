@@ -6,17 +6,24 @@ cd "$root"
 usage() {
   cat <<'USAGE'
 setup/build_release          build the release binary and stage dist/formslot-vX.Y.Z-<os>-<arch>/ and its .tar.gz
+  --dmg                      on macOS, also pack the staged folder into dist/formslot-vX.Y.Z-macos-<arch>.dmg
   FORMSLOT_DIST_DIR=<dir>    stage somewhere other than ./dist
   CARGO_TARGET_DIR=<dir>     build somewhere other than ./target
+  APPLE_SIGNING_IDENTITY=<identity>
+                             on macOS, sign the binary with this identity (hardened runtime, secure timestamp)
+                             before the checksums are written; the identity must be in a keychain on the search list
 On Windows run setup\build_release.bat. The version is the workspace version in Cargo.toml.
 USAGE
 }
 
+dmg=0
 case "${1:-}" in
   "") ;;
+  --dmg) dmg=1 ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
 esac
+[ "$#" -le 1 ] || { usage >&2; exit 2; }
 
 die() { echo "[formslot] $*" >&2; exit 1; }
 say() { echo "[formslot] $*"; }
@@ -29,6 +36,7 @@ case "$(uname -s)" in
   Linux) os=linux ;;
   *) die "build_release runs on macOS and Linux; on Windows run setup\\build_release.bat" ;;
 esac
+[ "$dmg" = 0 ] || [ "$os" = macos ] || die "--dmg makes a macOS disk image and runs on macOS only"
 case "$(uname -m)" in
   x86_64|amd64) arch=x86_64 ;;
   arm64|aarch64) arch=aarch64 ;;
@@ -47,11 +55,16 @@ bin="${CARGO_TARGET_DIR:-target}/release/formslot-cli"
 dist="${FORMSLOT_DIST_DIR:-$root/dist}"
 name="formslot-v$version-$os-$arch"
 stage="$dist/$name"
-rm -rf "$stage" "$dist/$name.tar.gz"
+rm -rf "$stage" "$dist/$name.tar.gz" "$dist/$name.dmg"
 mkdir -p "$stage/plugin" "$stage/data"
 
 cp "$bin" "$stage/formslot"
 chmod 755 "$stage/formslot"
+if [ "$os" = macos ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$stage/formslot"
+  codesign --verify --strict "$stage/formslot"
+  say "signed $stage/formslot"
+fi
 cp LICENSE NOTICE.md README.md formslot_oc_install "Install formslot.command" "$stage/"
 chmod 755 "$stage/formslot_oc_install" "$stage/Install formslot.command"
 cp -R plugin/formslot "$stage/plugin/formslot"
@@ -62,6 +75,10 @@ if command -v sha256sum >/dev/null; then sum() { sha256sum "$@"; }; else sum() {
 
 ( cd "$dist" && tar -czf "$name.tar.gz" "$name" )
 ( cd "$dist" && sum "$name.tar.gz" > "$name.tar.gz.sha256" )
+if [ "$dmg" = 1 ]; then
+  hdiutil create -quiet -volname "$name" -srcfolder "$stage" -ov -format UDZO "$dist/$name.dmg"
+fi
 
 say "staged $stage"
 say "archive $dist/$name.tar.gz"
+[ "$dmg" = 0 ] || say "disk image $dist/$name.dmg"

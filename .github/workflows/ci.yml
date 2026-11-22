@@ -1,0 +1,110 @@
+name: ci
+
+on:
+  push:
+    branches: [main, 'compile_v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A pull request's newer push cancels its older run. Runs on main and compile_v* are never cancelled: formcompiler
+# releases a commit only when this workflow passed on that exact commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: Engine and command line
+        run: cargo test --locked
+
+  release-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: The release script formcompiler runs on Linux
+        run: setup/build_release
+      - name: The archive holds the program, and its checksums hold
+        run: |
+          stage="$(ls -d dist/formslot-v*-linux-x86_64)"
+          tar -tzf "$stage.tar.gz" | grep -qx "$(basename "$stage")/formslot"
+          ( cd "$stage" && sha256sum --check --quiet SHA256SUMS )
+          ( cd dist && sha256sum --check --quiet "$(basename "$stage").tar.gz.sha256" )
+          "$stage/formslot" version
+
+  release-windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: The stand-alone release script
+        shell: cmd
+        run: call setup\build_release.bat
+      - name: The stand-alone zip carries its checksums
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = Get-ChildItem dist -Filter 'formslot-v*-windows-*.zip' | Select-Object -First 1
+          $names = [IO.Compression.ZipFile]::OpenRead($zip.FullName).Entries.FullName
+          if (-not ($names -match '[\\/]formslot\.exe$')) { throw 'formslot.exe is not in the zip' }
+          if (-not ($names -match '[\\/]SHA256SUMS$')) { throw 'SHA256SUMS is not in the zip' }
+          if (-not (Test-Path "$($zip.FullName).sha256")) { throw 'the .zip.sha256 is missing' }
+      - name: The release script formcompiler runs on Windows
+        shell: cmd
+        run: call setup\build_release.bat --no-sums
+      - name: The family zip carries no checksum file to go stale when the program is signed
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = Get-ChildItem dist -Filter 'formslot-v*-windows-*.zip' | Select-Object -First 1
+          $names = [IO.Compression.ZipFile]::OpenRead($zip.FullName).Entries.FullName
+          if (-not ($names -match '[\\/]formslot\.exe$')) { throw 'formslot.exe is not in the zip' }
+          if ($names -match 'SHA256SUMS$') { throw 'SHA256SUMS is still in the zip' }
+          if (Test-Path "$($zip.FullName).sha256") { throw 'a .zip.sha256 was left beside the zip' }
+          & (Get-ChildItem dist -Recurse -Filter formslot.exe | Select-Object -First 1).FullName version
+          if ($LASTEXITCODE -ne 0) { throw 'formslot.exe version failed' }
+
+  scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: |
+          for f in formslot formslot_oc_install "Install formslot.command" setup/build_release setup/package_skill; do
+            bash -n "$f"
+          done
+      - name: No em dash in tracked markdown, no emoji in tracked text
+        run: |
+          git ls-files -z | python3 -c '
+          import sys
+          bad = []
+          for path in sys.stdin.read().split("\0"):
+              if not path:
+                  continue
+              try:
+                  text = open(path, encoding="utf-8").read()
+              except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
+                  continue
+              markdown = path.endswith(".md")
+              for ch in text:
+                  cp = ord(ch)
+                  if (markdown and cp == 0x2014) or 0x1F000 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF:
+                      bad.append(f"{path}: U+{cp:04X}")
+                      break
+          print("\n".join(bad) or "clean")
+          sys.exit(1 if bad else 0)
+          '
