@@ -4,6 +4,7 @@ use std::time::Instant;
 use rusqlite::{Connection, params};
 use serde_json::{Value, json};
 
+use super::curate;
 use super::lookup::{self, Excerpter};
 use super::page::{self, Item, Listing};
 use crate::memory::{self, recall};
@@ -25,7 +26,7 @@ pub fn open() -> Result<Store, String> {
     Store::open(&config::corpus_db())
 }
 
-fn text_arg(args: &Value, name: &str) -> Option<String> {
+pub(super) fn text_arg(args: &Value, name: &str) -> Option<String> {
     args.get(name)
         .and_then(Value::as_str)
         .map(str::trim)
@@ -33,11 +34,11 @@ fn text_arg(args: &Value, name: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn required(args: &Value, name: &str, hint: &str) -> Result<String, String> {
+pub(super) fn required(args: &Value, name: &str, hint: &str) -> Result<String, String> {
     text_arg(args, name).ok_or_else(|| format!("{name} is required: {hint}"))
 }
 
-fn size(args: &Value, name: &str, default: usize, low: usize, high: usize) -> Result<usize, String> {
+pub(super) fn size(args: &Value, name: &str, default: usize, low: usize, high: usize) -> Result<usize, String> {
     match args.get(name) {
         None | Some(Value::Null) => Ok(default),
         Some(v) => match v.as_u64() {
@@ -711,6 +712,10 @@ pub fn dispatch(name: &str, args: &Value) -> Option<Result<Value, String>> {
         "slot_conventions" => conventions(args),
         "slot_status" => status(args),
         "slot_reindex" => reindex(args),
+        "slot_recall" => curate::recall(args),
+        "slot_remember" => curate::remember(args),
+        "slot_suggest" => curate::suggest(args),
+        "slot_drift" => curate::drift(args),
         _ => return None,
     })
 }

@@ -4,7 +4,6 @@ use std::process::ExitCode;
 use formslot_core::config;
 use formslot_core::slots::suggest::{self, Options};
 use formslot_core::store::Store;
-use serde_json::json;
 
 const USAGE: &str = "usage: formslot slot suggest <corpus> [--limit N] [--min-copies K] [--json] [--write DIR]";
 
@@ -101,34 +100,7 @@ pub fn run(args: &[String]) -> ExitCode {
         }
     }
     if json_out {
-        let list: Vec<_> = report
-            .suggestions
-            .iter()
-            .enumerate()
-            .map(|(i, s)| {
-                json!({
-                    "rank": i + 1,
-                    "id": s.id,
-                    "score": (s.score * 100.0).round() / 100.0,
-                    "reason": s.reason,
-                    "copies": s.copies,
-                    "dupLines": s.dup_lines,
-                    "callers": s.callers,
-                    "manifest": s.manifest,
-                })
-            })
-            .collect();
-        let value = json!({
-            "kind": "formslot.slot_suggest",
-            "corpus": report.corpus,
-            "commit": report.commit,
-            "candidates": report.candidates,
-            "skippedExisting": report.skipped_existing,
-            "invalid": report.invalid,
-            "millis": report.millis,
-            "written": written,
-            "suggestions": list,
-        });
+        let value = suggest::report_json(&report, &written);
         println!("{}", serde_json::to_string_pretty(&value).unwrap_or_default());
         return ExitCode::SUCCESS;
     }
