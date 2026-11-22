@@ -9,7 +9,7 @@ Rules for agents working in this repository. Planning documents (DEV_PLAN, BUILD
 - Not a skill store: formskills is. formslot points at released skills and never copies an app's skills into this repository.
 - Not an installer: FormPortal installs. formslot never installs, updates or removes an app.
 - No window in v1. Its UI lives in Substrate (formsubstrate).
-- Every list formslot carries about the family is generated from formcompiler's registry, never hand-kept; `--check` fails while it drifts.
+- The family list formslot reads is formMCP's `family.json` (`formslot family --family-json <path>`), which formMCP generates from formcompiler's registry. formslot keeps no family list by hand; `--check` fails while its copy drifts from that file.
 - formslot never edits a Form app's source. It writes only its own plugin files into a repository when asked, and merges into `.claude/settings.json` without touching the attribution keys.
 - Owner rules recorded as memory are read-only to agents. Agents propose records; nothing is deleted, superseded records stay with their validity dates.
 - Retrieved code reaches an agent as data inside an envelope (source, slot, licence, copy verdict), after a second secret scan.
