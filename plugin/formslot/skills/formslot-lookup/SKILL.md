@@ -17,10 +17,11 @@ Skip the lookup for edits inside a file you already know, for tests of existing 
 
 ## How to look
 
-1. Run slot_find with the purpose in plain words, such as "colour row for a dialog". Hits are slots first, then code units, then memory. Read the id, status, path and lines. Try a second wording or the likely symbol name if the first returns nothing. Slots from another repository rank below the searched repository's own unless they cover the query.
+1. When you do not know the corpus name, or more than one repository is indexed, call slot_status first: it lists the corpora with their heads and says whether the index is current. Then run slot_find with the purpose in plain words, such as "colour row for a dialog". Hits are slots first, then code units, then memory. Read the id, status, path and lines. Try a second wording or the likely symbol name if the first returns nothing. Slots from another repository rank below the searched repository's own unless they cover the query.
 2. For the best match, run slot_get for its files, exports and known copies. Use slot_usages to see who calls a symbol and slot_similar to find near copies. Run slot_context_pack with the task for a token-budgeted pack (tokens 64 to 16000, default 4000). Import or extend what exists rather than writing a parallel one.
-3. Run slot_conventions with the feature name as the topic. An owner record of kind declined means stop: quote the rule and its source to the user and do not build it. Other owner rules apply to how you build.
+3. Run slot_conventions with the feature name as the topic. An owner record of kind declined means stop: quote the rule and its source to the user and do not build it. Other owner rules apply to how you build. For the decisions and how-to notes behind a piece of code, run slot_recall with words or with an anchor (path#symbol); those records are guidance, not rules.
 4. Open the file at the path and line given and confirm it still matches. The index is built from a commit and can lag the working tree. slot_reindex refreshes a repository when the index is stale.
+5. In a repository that uses slots (it has a slots.lock.json), run slot_drift before changing a slot file: it says whether your copy is clean, changed locally, behind the canonical slot, diverged or missing.
 
 After the owner answers Use or Adapt for a slot whose code lives in another repository, that code is not in your worktree: call slot_source with the slot id (and file, a path from slot_get, to read one file). It returns each file at the slot's pinned commit inside the excerpt envelope, with the slot's exports and conventions. Honour the copy verdict and the file's port mode (verbatim, adapt, rename-strings-only), and when it reports truncated or omitted files, fetch them one at a time with file.
 
@@ -49,7 +50,7 @@ Without the MCP server, the same lookups run from a shell: `formslot search "WOR
 
 ## When a new component is right
 
-If nothing fits, say so in one sentence naming what you searched, then write it. If a slot almost fits, say what is missing and propose extending the slot instead of forking it. Never edit owner rules; propose a record with `formslot remember --propose "TEXT"` (add `--kind how-to` for a note on how something is done).
+If nothing fits, say so in one sentence naming what you searched, then write it. If a slot almost fits, say what is missing and propose extending the slot instead of forking it. Never edit owner rules. To record a decision or a note on how something is done, call slot_remember with the text (kind how-to for a note); from a shell the same is `formslot remember --propose "TEXT"`. It stores a proposal for the owner to review and changes nothing else. Confirming a slot, declining one and reviewing proposals are the owner's steps; the formslot-curation skill describes them.
 
 ## Setup and troubleshooting
 

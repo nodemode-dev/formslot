@@ -12,11 +12,16 @@ pub struct Part {
     pub what: &'static str,
 }
 
-pub const PARTS: [Part; 2] = [
+pub const PARTS: [Part; 3] = [
     Part {
         path: ".claude/skills/formslot-lookup/SKILL.md",
         text: include_str!("../../plugin/formslot/skills/formslot-lookup/SKILL.md"),
         what: "the formslot-lookup skill",
+    },
+    Part {
+        path: ".claude/skills/formslot-curation/SKILL.md",
+        text: include_str!("../../plugin/formslot/skills/formslot-curation/SKILL.md"),
+        what: "the formslot-curation skill",
     },
     Part {
         path: ".claude/agents/formslot-scout.md",

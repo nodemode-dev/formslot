@@ -5,6 +5,7 @@ pub mod api;
 pub mod binres;
 pub mod check;
 pub mod config;
+pub mod connect;
 pub mod count;
 pub mod corpus;
 pub mod dedup;

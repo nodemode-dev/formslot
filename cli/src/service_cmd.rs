@@ -467,6 +467,12 @@ pub fn doctor(args: &[String]) -> ExitCode {
         None => report.line("idle shutdown", "off"),
     }
     store_version(&mut report);
+    for name in ["claude", "codex", "cursor-agent", "agy"] {
+        match binres::find(name) {
+            Some(path) => report.line(name, &format!("{} ({})", path.display(), binres::source(name))),
+            None => report.line(name, &format!("not found (an agent program; optional; set {} if it is installed somewhere else)", binres::env_name(name))),
+        }
+    }
     for name in ["gitleaks", "rg", "curl"] {
         if let Some(path) = binres::refused(name) {
             report.warn(name, &format!("{} is ignored: it or its folder is group or world writable, or not owned by you", path.display()));

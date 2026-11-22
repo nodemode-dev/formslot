@@ -32,6 +32,18 @@ Then do the one step only you can do: open a terminal in that project, run `clau
 
 To add another project later, run `formslot add /path/to/project`. To connect it to Claude Code, run `formslot install /path/to/project`.
 
+### If you use Codex, Cursor or Antigravity
+
+These three can use formslot's lookup tools too. In a terminal, run the line for the program you use, with your project's folder:
+
+- Codex: `formslot connect codex /path/to/project`
+- Cursor: `formslot connect cursor /path/to/project`
+- Antigravity: `formslot connect antigravity /path/to/project`
+
+Each line adds formslot to that program's own settings file inside the project and changes nothing else in it. Add `--user` instead of a folder to connect every project at once. To undo it, run the same line with `--remove`. The program reads the file the next time it starts and may ask you to approve formslot once.
+
+What these three do not get: the quiet reminders described below. Those come from Claude Code's hooks, and only Claude Code has them. In Codex, Cursor and Antigravity, formslot answers when the assistant asks it.
+
 ## What you will see in Claude Code
 
 formslot speaks up only when it matters. Three things you may notice:
@@ -124,4 +136,4 @@ formslot setup --remove    # guided undo, each step asked and skippable
 
 ## Where your data lives
 
-Everything is in `~/.formslot` (on Windows, `.formslot` in your user folder). It holds the index database, the service file, the log, and small state files for the hooks. Set `FORMSLOT_DATA_DIR` to use another folder. formslot never changes your project's source; inside a project it writes only `.claude/settings.json` (merged, other keys kept), `.mcp.json`, the lookup skill at `.claude/skills/formslot-lookup/SKILL.md`, the scout agent at `.claude/agents/formslot-scout.md`, and `slots.lock.json` when you apply slots. If you change the skill or the agent by hand, formslot leaves your version alone from then on.
+Everything is in `~/.formslot` (on Windows, `.formslot` in your user folder). It holds the index database, the service file, the log, and small state files for the hooks. Set `FORMSLOT_DATA_DIR` to use another folder. formslot never changes your project's source; inside a project it writes only `.claude/settings.json` (merged, other keys kept), `.mcp.json`, the two skills under `.claude/skills/` (`formslot-lookup` and `formslot-curation`), the scout agent at `.claude/agents/formslot-scout.md`, the one settings file of Codex, Cursor or Antigravity when you run `formslot connect`, and `slots.lock.json` when you apply slots. If you change the skill or the agent by hand, formslot leaves your version alone from then on.

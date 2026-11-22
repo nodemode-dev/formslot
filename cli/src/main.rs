@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 mod agents_cmd;
+mod connect_cmd;
 mod corpus_cmd;
 mod corpus_edit_cmd;
 mod dedup_cmd;
@@ -75,8 +76,9 @@ const HELP: &str = "formslot: the Form family's context service
   agents sync [--check]             in a source checkout, write agents/manifest.json (the MCP tools with their classes, and the skills) from the definitions; --check exits 1 while the file differs
   mcp        serve MCP over stdio (newline-delimited JSON-RPC) for an agent's .mcp.json
   check [--mode warn|deny|off]      PreToolUse hook: reads the hook JSON on stdin, answers declines and reuse
-  hook <event>                      Claude Code hook: SessionStart, UserPromptSubmit, PostToolUse, PreCompact, SubagentStart, Stop
-  install <repo> [--mode warn|deny] [--enable] [--dry-run]   connect a repository to Claude Code: merge the hooks and the MCP entry, keeping every other key, and write the formslot-lookup skill and the formslot-scout agent into .claude/skills and .claude/agents
+  hook <event>                      Claude Code hook: SessionStart, UserPromptSubmit, PostToolUse, SubagentStart, Stop
+  install <repo> [--mode warn|deny] [--enable] [--dry-run]   connect a repository to Claude Code: merge the hooks and the MCP entry, keeping every other key, and write the formslot-lookup and formslot-curation skills and the formslot-scout agent into .claude/skills and .claude/agents
+  connect codex|cursor|antigravity [<repo>] [--user] [--remove] [--dry-run]   add the formslot MCP server to that agent program's own configuration for a project (.codex/config.toml, .cursor/mcp.json, .agents/mcp_config.json) or, with --user, for every project
   version    print the version
   help       this text
 
@@ -146,6 +148,7 @@ fn main() -> ExitCode {
         "eval" => eval_cmd::run(&args[1..]),
         "key" => key_cmd::run(&args[1..]),
         "agents" => agents_cmd::run(&args[1..]),
+        "connect" => connect_cmd::run(&args[1..]),
         "check" => hook_cmd::check(&args[1..]),
         "hook" => hook_cmd::event(&args[1..]),
         "install" => hook_cmd::install(&args[1..]),

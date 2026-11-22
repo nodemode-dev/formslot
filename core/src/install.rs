@@ -9,6 +9,9 @@ use crate::store::Store;
 use crate::config;
 
 const SERVER: &str = "formslot";
+pub const SESSION_MATCHER: &str = "startup|resume|clear|compact|fork";
+pub const WRITE_MATCHER: &str = "Write|Edit|NotebookEdit";
+const EARLIER_MATCHERS: [(&str, &str); 2] = [("startup|resume|clear|compact", SESSION_MATCHER), ("Write|Edit|MultiEdit", WRITE_MATCHER)];
 
 pub struct Report {
     pub lines: Vec<String>,
@@ -112,16 +115,36 @@ fn ours_stale(command: &str) -> Option<String> {
     Some(format!("{}{}", launcher_word(), rest))
 }
 
+fn ours_matchers(event_array: &Node) -> Vec<(&Node, &'static str)> {
+    event_array
+        .items()
+        .iter()
+        .filter(|group| group.get("hooks").is_some_and(|hs| hs.items().iter().any(|h| h.get("command").and_then(Node::text).is_some_and(is_ours))))
+        .filter_map(|group| group.get("matcher"))
+        .filter_map(|matcher| {
+            let text = matcher.text()?;
+            EARLIER_MATCHERS.iter().find(|(old, _)| *old == text).map(|(_, new)| (matcher, *new))
+        })
+        .collect()
+}
+
 fn normalise(value: &Value) -> Value {
     match value {
-        Value::Object(map) => Value::Object(
-            map.iter()
-                .map(|(k, v)| match (k.as_str(), v.as_str()) {
-                    ("command", Some(c)) if is_ours(c) => (k.clone(), Value::String("<ours>".to_string())),
-                    _ => (k.clone(), normalise(v)),
-                })
-                .collect(),
-        ),
+        Value::Object(map) => {
+            let ours_group = map
+                .get("hooks")
+                .and_then(Value::as_array)
+                .is_some_and(|hs| hs.iter().any(|h| h.get("command").and_then(Value::as_str).is_some_and(is_ours)));
+            Value::Object(
+                map.iter()
+                    .map(|(k, v)| match (k.as_str(), v.as_str()) {
+                        ("command", Some(c)) if is_ours(c) => (k.clone(), Value::String("<ours>".to_string())),
+                        ("matcher", Some(_)) if ours_group => (k.clone(), Value::String("<ours>".to_string())),
+                        _ => (k.clone(), normalise(v)),
+                    })
+                    .collect(),
+            )
+        }
         Value::Array(items) => Value::Array(items.iter().map(normalise).collect()),
         other => other.clone(),
     }
@@ -151,13 +174,13 @@ fn event_groups(mode: Mode) -> Vec<(&'static str, J)> {
         J::obj(pairs)
     };
     vec![
-        ("SessionStart", group(Some("startup|resume|clear|compact"), handler(&hook("SessionStart"), 15, None, false))),
+        ("SessionStart", group(Some(SESSION_MATCHER), handler(&hook("SessionStart"), 15, None, false))),
         ("UserPromptSubmit", group(None, handler(&hook("UserPromptSubmit"), 10, None, false))),
         (
             "PreToolUse",
-            group(Some("Write|Edit|MultiEdit"), handler(check, 5, Some("formslot: checking for existing code"), false)),
+            group(Some(WRITE_MATCHER), handler(check, 5, Some("formslot: checking for existing code"), false)),
         ),
-        ("PostToolUse", group(Some("Write|Edit|MultiEdit"), handler(&hook("PostToolUse"), 10, None, true))),
+        ("PostToolUse", group(Some(WRITE_MATCHER), handler(&hook("PostToolUse"), 10, None, true))),
         ("SubagentStart", group(None, handler(&hook("SubagentStart"), 10, None, false))),
         ("Stop", group(None, handler(&hook("Stop"), 10, None, false))),
     ]
@@ -214,9 +237,16 @@ pub fn merge_settings(text: &str, mode: Mode, enable: bool) -> crate::Result<(St
                                     moved += 1;
                                 }
                             }
+                            let matchers = ours_matchers(a);
+                            for (node, fresh) in &matchers {
+                                splices.push(replace_string(node, fresh));
+                            }
+                            if let Some((_, fresh)) = matchers.first() {
+                                changes.push(format!("hooks.{event}: formslot matcher updated to {fresh}"));
+                            }
                             if moved > 0 {
                                 changes.push(format!("hooks.{event}: formslot command path updated to {} ({moved} entries)", launcher_path()));
-                            } else {
+                            } else if matchers.is_empty() {
                                 changes.push(format!("hooks.{event}: already has a formslot hook, left as it is"));
                             }
                         } else if let Some(s) = jsonedit::append(text, a, &[(None, group.clone())], &unit) {
