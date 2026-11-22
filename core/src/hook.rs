@@ -67,7 +67,7 @@ fn input_digest(value: &Value) -> String {
     let mut fields: std::collections::BTreeMap<String, Value> = std::collections::BTreeMap::new();
     if let Some(map) = value.get("tool_input").and_then(Value::as_object) {
         for (k, v) in map {
-            if k != "file_path" {
+            if k != "file_path" && k != "notebook_path" {
                 fields.insert(k.clone(), v.clone());
             }
         }
@@ -283,9 +283,6 @@ pub fn run_event(event: &str, stdin: &str) -> Option<String> {
         let value = payload(&input).unwrap_or(Value::Null);
         let cwd = value.get("cwd").and_then(Value::as_str).unwrap_or("").to_string();
         let session = value.get("session_id").and_then(Value::as_str).unwrap_or("").to_string();
-        if name == "PreCompact" {
-            return Ok(None);
-        }
         let Some(conn) = open()? else { return Ok(None) };
         let all = targets(&conn)?;
         let Some(target) = check::corpus_for(&all, &cwd) else { return Ok(None) };
@@ -441,10 +438,14 @@ fn prompt_matches(conn: &Connection, target: &Target, prompt: &str) -> crate::Re
 
 fn post_tool(target: &Target, value: &Value, session: &str) {
     let tool = value.get("tool_name").and_then(Value::as_str).unwrap_or("");
-    if !matches!(tool, "Write" | "Edit" | "MultiEdit") {
+    if !matches!(tool, "Write" | "Edit" | "MultiEdit" | "NotebookEdit") {
         return;
     }
-    let raw = value.pointer("/tool_input/file_path").and_then(Value::as_str).unwrap_or("");
+    let raw = value
+        .pointer("/tool_input/file_path")
+        .or_else(|| value.pointer("/tool_input/notebook_path"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
     if let Some(rel) = check::relative(target, raw) {
         update(session, |state| {
             if !state.written.contains(&rel) {

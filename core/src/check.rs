@@ -90,7 +90,7 @@ pub fn request_of(v: &Value) -> Option<Request> {
     let input = v.get("tool_input")?;
     let cwd = v.get("cwd").and_then(Value::as_str).unwrap_or("").to_string();
     let session = v.get("session_id").and_then(Value::as_str).unwrap_or("").to_string();
-    let raw = input.get("file_path").and_then(Value::as_str)?.to_string();
+    let raw = input.get("file_path").or_else(|| input.get("notebook_path")).and_then(Value::as_str)?.to_string();
     let path = if Path::new(&raw).is_absolute() || cwd.is_empty() {
         clean(Path::new(&raw)).to_string_lossy().to_string()
     } else {
@@ -98,6 +98,7 @@ pub fn request_of(v: &Value) -> Option<Request> {
     };
     let (new_text, old_text) = match tool.as_str() {
         "Write" => (input.get("content")?.as_str()?.to_string(), None),
+        "NotebookEdit" => (input.get("new_source")?.as_str()?.to_string(), None),
         "Edit" => (
             input.get("new_string")?.as_str()?.to_string(),
             Some(input.get("old_string").and_then(Value::as_str).unwrap_or("").to_string()),
@@ -159,7 +160,7 @@ fn partial_string(text: &str, key: &str) -> Option<String> {
 pub fn lenient(text: &str) -> Option<Value> {
     let tool = partial_string(text, "tool_name")?;
     let mut input = serde_json::Map::new();
-    for key in ["file_path", "content", "old_string", "new_string"] {
+    for key in ["file_path", "notebook_path", "content", "new_source", "old_string", "new_string"] {
         if let Some(v) = partial_string(text, key) {
             input.insert(key.to_string(), Value::String(v));
         }
