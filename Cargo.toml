@@ -3,7 +3,7 @@ members = ["core", "cli"]
 resolver = "2"
 
 [workspace.package]
-version = "0.16.6"
+version = "0.17.0"
 edition = "2024"
 rust-version = "1.90"
 license = "GPL-3.0-only"

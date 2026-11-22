@@ -120,7 +120,7 @@ fn dispatch(req: &Request) -> Reply {
         ("GET", ["api", "slots"]) => slots::web::list(&req.query),
         ("GET", ["api", "slots", id]) => slots::web::get(id),
         ("GET", ["api", "slots", id, "source"]) => slots::web::source(id, &req.query),
-        ("POST", ["mcp"]) => crate::mcp::http::post(&req.body),
+        ("POST", ["mcp"]) => crate::mcp::http::post(req),
         (_, ["mcp"]) => Reply::error(405, "method_not_allowed", "POST JSON-RPC messages to /mcp.").with_header("Allow", "POST"),
         (_, other) => match allowed(other) {
             Some(methods) => Reply::error(405, "method_not_allowed", "That method is not served on this path.").with_header("Allow", methods),

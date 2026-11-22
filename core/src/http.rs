@@ -46,6 +46,7 @@ pub struct Request {
     pub path: String,
     pub query: String,
     pub body: Vec<u8>,
+    pub headers: HashMap<String, String>,
 }
 
 pub struct Reply {
@@ -223,7 +224,7 @@ fn read_request(stream: &TcpStream) -> std::result::Result<Head, Reply> {
             }
         }
     }
-    Ok(Head { request: Request { method, path, query, body }, headers })
+    Ok(Head { request: Request { method, path, query, body, headers: HashMap::new() }, headers })
 }
 
 fn write_reply(mut stream: &TcpStream, reply: &Reply) {
@@ -261,7 +262,7 @@ fn refuse(reason: &str, status: u16, code: &str, message: &str) -> Reply {
 }
 
 fn handle(head: Head, port: u16, token: &str, route: fn(&Request) -> Reply) -> Reply {
-    let Head { request, headers } = head;
+    let Head { mut request, mut headers } = head;
     if !headers.get("host").is_some_and(|host| host_ok(host, port)) {
         return refuse("host", 421, "wrong_host", "The Host header must be 127.0.0.1 or localhost with this service's port.");
     }
@@ -276,6 +277,8 @@ fn handle(head: Head, port: u16, token: &str, route: fn(&Request) -> Reply) -> R
     if !same(given, token) {
         return refuse("token", 401, "unauthorized", "A valid access token is required.");
     }
+    headers.remove("authorization");
+    request.headers = headers;
     route(&request)
 }
 

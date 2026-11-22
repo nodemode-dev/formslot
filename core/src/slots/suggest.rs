@@ -55,6 +55,37 @@ pub struct Report {
     pub millis: u64,
 }
 
+pub fn report_json(report: &Report, written: &[String]) -> Value {
+    let list: Vec<Value> = report
+        .suggestions
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            json!({
+                "rank": i + 1,
+                "id": s.id,
+                "score": (s.score * 100.0).round() / 100.0,
+                "reason": s.reason,
+                "copies": s.copies,
+                "dupLines": s.dup_lines,
+                "callers": s.callers,
+                "manifest": s.manifest,
+            })
+        })
+        .collect();
+    json!({
+        "kind": "formslot.slot_suggest",
+        "corpus": report.corpus,
+        "commit": report.commit,
+        "candidates": report.candidates,
+        "skippedExisting": report.skipped_existing,
+        "invalid": report.invalid,
+        "millis": report.millis,
+        "written": written,
+        "suggestions": list,
+    })
+}
+
 fn sql(e: rusqlite::Error) -> String {
     format!("suggest: {e}")
 }
