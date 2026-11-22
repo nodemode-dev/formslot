@@ -130,7 +130,7 @@ All FormSlot builds are compiled and released from [FormCompiler](https://github
 
 ## Run it from source
 
-FormSlot has no window of its own: you use it from a terminal, from Claude Code, or in [SubForm](https://github.com/nodemode-dev/subform), where its panel lives.
+FormSlot has no window of its own: you use it from a terminal, from Claude Code, or in [Substrate](https://github.com/nodemode-dev/formsubstrate) (FormSubstrate), where its panel lives.
 
 **Requires:** git and Rust 1.90 or later.
 

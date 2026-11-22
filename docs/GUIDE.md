@@ -46,7 +46,7 @@ formslot: this project declines "undo history for the canvas"
 
 This one does block the write, and quotes the rule so you can see where it came from.
 
-**The slot card (in subform).** If you use subform, its right panel has a Slots tab. When you open a file it shows which reusable slots or known code units cover that file, for example "ui.control-rows" with its status. A file nothing covers shows "No slot or unit covers this file".
+**The slot card (in Substrate).** If you use Substrate (FormSubstrate), its right panel has a Slots tab. When you open a file it shows which reusable slots or known code units cover that file, for example "ui.control-rows" with its status. A file nothing covers shows "No slot or unit covers this file".
 
 ## Everyday commands
 
