@@ -74,7 +74,7 @@ const HELP: &str = "formslot: the Form family's context service
   mcp        serve MCP over stdio (newline-delimited JSON-RPC) for an agent's .mcp.json
   check [--mode warn|deny|off]      PreToolUse hook: reads the hook JSON on stdin, answers declines and reuse
   hook <event>                      Claude Code hook: SessionStart, UserPromptSubmit, PostToolUse, PreCompact, SubagentStart, Stop
-  install <repo> [--mode warn|deny] [--enable] [--dry-run]   merge the hooks and the MCP entry into a repository, keeping every other key
+  install <repo> [--mode warn|deny] [--enable] [--dry-run]   connect a repository to Claude Code: merge the hooks and the MCP entry, keeping every other key, and write the formslot-lookup skill and the formslot-scout agent into .claude/skills and .claude/agents
   version    print the version
   help       this text
 
