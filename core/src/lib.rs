@@ -1,5 +1,6 @@
 pub type Result<T> = std::result::Result<T, String>;
 
+pub mod agentfiles;
 pub mod api;
 pub mod binres;
 pub mod check;

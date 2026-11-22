@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use formslot_core::discovery::{self, ServiceInfo};
-use formslot_core::{CONTRACT, VERSION, api, binres, config, http, install, lifecycle, log};
+use formslot_core::{CONTRACT, VERSION, agentfiles, api, binres, config, http, install, lifecycle, log};
 use serde_json::{Value, json};
 
 const START_WAIT: Duration = Duration::from_secs(20);
@@ -488,6 +488,15 @@ pub fn doctor(args: &[String]) -> ExitCode {
     }
     if let Some(repo) = repo {
         repo_commands(&mut report, &repo);
+        for part in &agentfiles::PARTS {
+            let place = repo.join(part.path);
+            match agentfiles::state(&repo, part) {
+                agentfiles::State::Current => report.line("repo agent files", &format!("{} is this version at {}", part.what, place.display())),
+                agentfiles::State::Older => report.warn("repo agent files", &format!("{} at {} is from an earlier formslot; run `formslot install {}` to update it", part.what, place.display(), repo.display())),
+                agentfiles::State::Changed => report.line("repo agent files", &format!("{} at {} was changed by hand and is left alone", part.what, place.display())),
+                agentfiles::State::Missing => report.warn("repo agent files", &format!("{} is not in this project; run `formslot install {}` (Claude Code loads it from {})", part.what, repo.display(), part.path)),
+            }
+        }
     }
     report.line("dense feature", if cfg!(feature = "dense") { "built in" } else { "not built (cargo build --features dense)" });
     match plugin_version() {

@@ -1,0 +1,14 @@
+{
+  "name": "formslot",
+  "description": "FormSlot's Claude Code plugin: the lookup skill, the scout agent, the hooks and the MCP server entry.",
+  "owner": {
+    "name": "nodemode-ai"
+  },
+  "plugins": [
+    {
+      "name": "formslot",
+      "source": "./plugin/formslot",
+      "description": "Finds existing slots, units and owner rules before an agent writes new code, and blocks features the owner has declined."
+    }
+  ]
+}

@@ -364,14 +364,14 @@ fn read_optional(path: &Path) -> crate::Result<Option<String>> {
     }
 }
 
-fn no_link(path: &Path) -> crate::Result<()> {
+pub(crate) fn no_link(path: &Path) -> crate::Result<()> {
     if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
         return Err(format!("refused: {} is a symbolic link", path.display()));
     }
     Ok(())
 }
 
-fn write_atomic(path: &Path, text: &str) -> crate::Result<()> {
+pub(crate) fn write_atomic(path: &Path, text: &str) -> crate::Result<()> {
     use std::io::Write;
     if let Some(dir) = path.parent() {
         no_link(dir)?;
@@ -530,6 +530,7 @@ pub fn install(repo: &Path, mode: Mode, enable: bool, dry_run: bool) -> crate::R
             write_atomic(&mcp_path, &mcp_text)?;
         }
     }
+    crate::agentfiles::install(repo, dry_run, &mut lines)?;
     Ok(Report { lines })
 }
 
@@ -746,7 +747,7 @@ fn settings_remove(plain: &str) -> crate::Result<(String, String)> {
 pub fn connection(repo: &Path) -> crate::Result<(bool, bool)> {
     let (_, _, settings) = planned(&repo.join(".claude").join("settings.json"), settings_remove)?;
     let (_, _, mcp) = planned(&repo.join(".mcp.json"), unmerge_mcp)?;
-    Ok((settings, mcp))
+    Ok((settings || crate::agentfiles::present(repo), mcp))
 }
 
 pub fn backup_name(path: &Path) -> PathBuf {
@@ -790,5 +791,6 @@ pub fn disconnect(repo: &Path, dry_run: bool) -> crate::Result<Disconnect> {
             backups.push(copy);
         }
     }
+    crate::agentfiles::remove(repo, dry_run, &mut lines)?;
     Ok(Disconnect { lines, settings, mcp, backups })
 }
