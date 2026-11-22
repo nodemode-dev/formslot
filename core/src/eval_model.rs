@@ -512,6 +512,9 @@ struct Job<'a> {
 }
 
 pub fn run(store: &mut Store, gold: Vec<Gold>, gold_path: &str, corpus: Option<&str>, opts: &Options) -> crate::Result<ModelReport> {
+    if cfg!(windows) {
+        return Err("eval model: this arm runs on macOS and Linux only. On Windows it cannot stop a claude run that passes its time limit or make the exported copy of the project read-only, so it does not start. The formslot, baseline and dense arms run on Windows.".to_string());
+    }
     if !opts.cost_cap.is_finite() || opts.cost_cap <= 0.0 {
         return Err("eval model: the cost cap must be a number of US dollars above zero".to_string());
     }

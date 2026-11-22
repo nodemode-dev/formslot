@@ -1,7 +1,7 @@
 {
   "name": "formslot",
   "displayName": "formslot",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "description": "Finds existing slots, units and owner rules before an agent writes new code, and blocks features the owner has declined.",
   "author": {
     "name": "nodemode-ai"

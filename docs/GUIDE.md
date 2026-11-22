@@ -18,7 +18,7 @@ You need [git](https://git-scm.com) and [Claude Code](https://claude.com/product
 
 Pick one way:
 
-- **macOS:** double-click `Install formslot.command` in the formslot folder. The first time, macOS may refuse because the file did not come from the App Store. Right-click the file, choose Open, then choose Open again in the question that appears. You only do this once.
+- **macOS:** open the disk image you downloaded and double-click `Install formslot.command` in it. In a folder built from source, double-click the same file there. The released disk image is signed and checked by Apple before it is published. If macOS still refuses to open the file, right-click it, choose Open, then choose Open again in the question that appears. You only do this once.
 - **Windows:** double-click `Install formslot.bat`. Windows SmartScreen may show a blue "Windows protected your PC" box. Click "More info", then "Run anyway". This appears because the file is new to Windows, not because anything is wrong.
 - **One command, any system:** open a terminal in the formslot folder and run `./formslot_oc_install` (on Windows `formslot_oc_install.bat`). When it finishes it offers to start the guided setup. If formslot is already built, `./formslot setup` does the same.
 

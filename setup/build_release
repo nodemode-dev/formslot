@@ -51,6 +51,9 @@ cargo build --release --locked -p formslot-cli
 
 bin="${CARGO_TARGET_DIR:-target}/release/formslot-cli"
 [ -x "$bin" ] || die "the release binary is missing at $bin"
+if [ "$os" = macos ] && "$bin" dense status >/dev/null 2>&1; then
+  die "this program was built with the dense feature; a macOS release is built without it, because the hardened runtime refuses the ONNX Runtime library it loads unless the program is signed with the disable-library-validation entitlement"
+fi
 
 dist="${FORMSLOT_DIST_DIR:-$root/dist}"
 name="formslot-v$version-$os-$arch"

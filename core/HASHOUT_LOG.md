@@ -1391,3 +1391,27 @@ Skills. `formslot-lookup` names `slot_status` in its first step, `slot_recall`, 
 Counted today, replacing the figures of the v0.9.0 entry above (which said 16 and 429): `formslot-lookup` name 15 characters, description 577, 62 lines; `formslot-curation` name 17, description 634, 45 lines; `formslot-dev` name 12, description 625, 66 lines. All three pass `setup/package_skill`, which now takes a skill folder as its argument.
 
 Validators. `.github/workflows/validate.yml` runs `agentskills validate` on every skill folder (the command of the reference validator package `skills-ref`, Apache-2.0, from PyPI, pinned at 0.1.1; the package installs no command named `skills-ref`, which a first draft of the workflow called) and `claude plugin validate` on the plugin and on the marketplace file. They are in their own workflow, not in `ci.yml`: formcompiler builds a commit only when `ci.yml` passed on it, and a registry outage while installing a validator must not hold a release. `claude plugin validate` opens no session, but it does install the `claude` program on the runner; the handoff says to ask the owner before doing that, so the workflow is the proposal and removing the `plugin` job is the answer "no". `agentskills validate` 0.1.1 was run here on the three skill folders and found each valid; `claude plugin validate` was not run.
+
+### core/src/eval_model.rs · the model arm refuses on Windows
+
+- refers-to: core/src/eval_model.rs :: run, kill_group, call, checkout
+- kind: warning-context
+- logged: v0.18.1 · 2026-11-22
+
+The model arm stops a `claude` run that passes its time limit with `kill -KILL -pid` on a process group it made with `process_group(0)`, unpacks the export with `tar`, and makes it read-only with `chmod -R a-w`. The process group exists only on Unix, so on Windows a timed-out `claude` and anything it started would have kept running, and the exported tree would have stayed writable while a model worked in it. Between refusing and supporting Windows, refusing was chosen: the Windows path (a job object for the process tree, an archive reader and read-only attributes) cannot be run or even started in this workspace, and a guard that is wrong here fails silently in the two ways that matter, a process that outlives the run and a model writing where it should only read. `run` now returns an error on Windows before it looks for `claude`, the command exits 1, and the message names the arms that do run there. Supporting Windows is left for a session that can run it; TEST_PLAN.md says what to see.
+
+### setup/build_release · no dense program in a macOS release
+
+- refers-to: setup/build_release :: bin; docs/CONTRACT.md :: Dense tier
+- kind: warning-context
+- logged: v0.18.1 · 2026-11-22
+
+The dense tier loads ONNX Runtime at run time from a path the owner sets. A macOS release is signed with the hardened runtime, and the hardened runtime refuses a library signed by another team unless the program carries the `com.apple.security.cs.disable-library-validation` entitlement (Apple, "Notarizing macOS software before distribution"; single source, from the handoff). The release script builds without features, so a dense program cannot come out of it by accident, but nothing said so. It now asks the built program (`formslot dense status` exits 0 only in a dense build) and stops on macOS when the answer is yes, with the reason. A macOS dense release would need an entitlements file passed to `codesign` and a notice row for the decision; neither exists, on purpose. The guard is macOS only and has not run: there is no Mac here.
+
+### docs/GUIDE.md, CLAUDE.md · the Mac install line and the family list
+
+- refers-to: docs/GUIDE.md :: Install; CLAUDE.md :: What formslot is, and is not
+- kind: warning-context
+- logged: v0.18.1 · 2026-11-22
+
+The guide told every Mac user to right-click and choose Open, which is advice for an unsigned file. The release is now a signed and notarized disk image, so the guide leads with opening the image and keeps the right-click line only as what to do if macOS still refuses. What a clean Mac really shows for `Install formslot.command` run from the mounted image has not been seen by anyone; it is a step in TEST_PLAN.md, and this bullet should be rewritten from what the tester sees. The Windows line is unchanged: a newly signed program still meets SmartScreen's reputation warning on its first releases. CLAUDE.md said the family lists come from formcompiler's registry; the code reads formMCP's `family.json` (`core/src/family.rs`, format `formmcp-family`), which formMCP generates from that registry, and the line now says so.
