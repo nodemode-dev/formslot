@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 0.16.4" src="https://img.shields.io/badge/version-0.16.4-eef0f4?style=flat-square">
+  <img alt="version 0.16.5" src="https://img.shields.io/badge/version-0.16.5-eef0f4?style=flat-square">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-1.90%2B-dea584?style=flat-square&logo=rust&logoColor=white">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-bundled-0f80cc?style=flat-square">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -110,6 +110,8 @@ formslot mcp                                      # MCP server on stdio for Clau
 ```
 
 `formslot install <repo>` writes the plugin files and hooks into a repository: a map digest at session start, a reuse and declined-feature check before every write, and a duplicate audit at stop. See [`AGENTS.md`](AGENTS.md) and [`docs/CONTRACT.md`](docs/CONTRACT.md).
+
+Nothing leaves your computer unless you run one of three commands yourself: `pack --count remote` sends the pack text and your Anthropic key to `api.anthropic.com` for a token count, `dense fetch --yes` downloads a model from `huggingface.co`, and `eval --arm model` runs `claude` on your Claude Code login. [`docs/GUIDE.md`](docs/GUIDE.md) says what each one sends, and [`SECURITY.md`](SECURITY.md) how the local service is guarded.
 
 ## Under the hood
 

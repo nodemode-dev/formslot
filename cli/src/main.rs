@@ -6,6 +6,7 @@ mod dedup_cmd;
 mod dense_cmd;
 mod eval_cmd;
 mod hook_cmd;
+mod key_cmd;
 mod mcp_cmd;
 mod memory_cmd;
 mod search_cmd;
@@ -69,6 +70,7 @@ const HELP: &str = "formslot: the Form family's context service
   pack <task> [--corpus C] [--tokens N] [--tier T1|T4|T16] [--json]   a P0/P1/P2 context pack
   eval [--gold F] [--corpus C] [--arm formslot|baseline|dense|all] [--k 1,4,10] [--half all|tuning|held-out] [--json] [--out F]   recall, MRR, nDCG, tokens and latency over a gold set
   eval --arm model [--sample N] [--model M] [--runs R] [--seed S] [--jobs J] [--max-cost USD] [--out F]   the only arm that calls a model: claude -p with and without the pack, pass rate, tokens, cost (uses your Claude Code login)
+  key set | remove | status [--json]   the Anthropic key for `pack --count remote`: set reads it from standard input and saves it in the system password store (a file only you can read where there is none); status never reads the password store
   mcp        serve MCP over stdio (newline-delimited JSON-RPC) for an agent's .mcp.json
   check [--mode warn|deny|off]      PreToolUse hook: reads the hook JSON on stdin, answers declines and reuse
   hook <event>                      Claude Code hook: SessionStart, UserPromptSubmit, PostToolUse, PreCompact, SubagentStart, Stop
@@ -140,6 +142,7 @@ fn main() -> ExitCode {
         "map" => search_cmd::map(&args[1..]),
         "pack" => search_cmd::pack(&args[1..]),
         "eval" => eval_cmd::run(&args[1..]),
+        "key" => key_cmd::run(&args[1..]),
         "check" => hook_cmd::check(&args[1..]),
         "hook" => hook_cmd::event(&args[1..]),
         "install" => hook_cmd::install(&args[1..]),

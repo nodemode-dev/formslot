@@ -19,7 +19,7 @@ Rules for agents working in this repository. Planning documents (DEV_PLAN, BUILD
 - Edits are surgical: one region per change, made by hand; no sed, scripts, patches or bundles.
 - The engine owns all logic and works with no window; the command line and any shell are thin.
 - HTTP listens on 127.0.0.1 only and checks the access token, the Host and the Origin on every request.
-- Secrets live only in the system keychain; never write a secret value to a file, the log or an error.
+- A secret lives in the system password store. Only where the computer has none does `formslot key set` keep it in a file in the data folder that only the user can read, and it says so. Never write a secret value to any other file, the log or an error.
 - No emoji anywhere, and no em dash in Markdown.
 - No tests until the owner asks for them or places formslot under the family test plan; testing intent goes in `TEST_PLAN.md` in the sidecar.
 

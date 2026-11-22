@@ -5,22 +5,9 @@ use serde_json::{Value, json};
 const URL: &str = "https://api.anthropic.com/v1/messages/count_tokens";
 const VERSION: &str = "2023-06-01";
 const DEFAULT_MODEL: &str = "claude-sonnet-5-5";
-const SERVICE: &str = "formslot";
-const ACCOUNT: &str = "anthropic";
 
 pub fn key() -> crate::Result<String> {
-    if let Ok(entry) = keyring::Entry::new(SERVICE, ACCOUNT) {
-        if let Ok(found) = entry.get_password() {
-            let found = found.trim().to_string();
-            if !found.is_empty() {
-                return Ok(found);
-            }
-        }
-    }
-    match std::env::var("ANTHROPIC_API_KEY") {
-        Ok(v) if !v.trim().is_empty() => Ok(v.trim().to_string()),
-        _ => Err("--count remote needs the keyring entry formslot/anthropic or ANTHROPIC_API_KEY".to_string()),
-    }
+    crate::keys::get(crate::keys::ANTHROPIC, crate::keys::ANTHROPIC_ENV).map_err(|e| format!("--count remote needs an Anthropic key; {e}"))
 }
 
 pub fn remote(key: &str, prompt: &str) -> crate::Result<u64> {
