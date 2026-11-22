@@ -70,6 +70,14 @@
   },
   "skills": [
     {
+      "name": "formslot-curation",
+      "sub_skills": []
+    },
+    {
+      "name": "formslot-dev",
+      "sub_skills": []
+    },
+    {
       "name": "formslot-lookup",
       "sub_skills": []
     }

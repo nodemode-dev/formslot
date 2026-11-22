@@ -1,0 +1,53 @@
+name: validate
+
+on:
+  pull_request:
+    paths:
+      - 'plugin/**'
+      - '.claude/skills/**'
+      - '.claude-plugin/**'
+      - '.github/workflows/validate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugin/**'
+      - '.claude/skills/**'
+      - '.claude-plugin/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  skills:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: The reference skill validator
+        run: |
+          python -m pip install --quiet skills-ref
+          for skill in plugin/formslot/skills/*/ .claude/skills/*/; do
+            skills-ref validate "$skill"
+          done
+
+  plugin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Claude Code's own manifest check, which opens no session
+        run: |
+          npm install --global --silent @anthropic-ai/claude-code
+          claude plugin validate plugin/formslot
+          claude plugin validate .

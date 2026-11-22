@@ -3,8 +3,9 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-skill=formslot-lookup
-src="plugin/formslot/skills/$skill"
+src="${1:-plugin/formslot/skills/formslot-lookup}"
+src="${src%/}"
+skill="$(basename "$src")"
 dist="${FORMSLOT_DIST_DIR:-$root/dist}"
 out="$dist/$skill.skill"
 validator="${VALIDATE_SKILL:-}"
