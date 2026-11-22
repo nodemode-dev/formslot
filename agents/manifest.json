@@ -1,0 +1,78 @@
+{
+  "app": "formslot",
+  "dock": {
+    "positions": [],
+    "present": false,
+    "tabs": []
+  },
+  "extensions": null,
+  "format": "form-agent-manifest",
+  "mcp": {
+    "approval_gated": [],
+    "own_store": [
+      "slot_reindex",
+      "slot_remember"
+    ],
+    "protocols": [
+      "2026-07-28",
+      "2025-11-25",
+      "2025-06-18",
+      "2025-03-26",
+      "2024-11-05"
+    ],
+    "read_only": [
+      "slot_find",
+      "slot_get",
+      "slot_source",
+      "slot_usages",
+      "slot_similar",
+      "slot_context_pack",
+      "slot_conventions",
+      "slot_status",
+      "slot_recall",
+      "slot_suggest",
+      "slot_drift"
+    ],
+    "titles": {
+      "slot_context_pack": "Build a context pack",
+      "slot_conventions": "Owner rules and declines",
+      "slot_drift": "Check slot drift",
+      "slot_find": "Find reusable code",
+      "slot_get": "Get one slot",
+      "slot_recall": "Recall records",
+      "slot_reindex": "Reindex a corpus",
+      "slot_remember": "Propose a record",
+      "slot_similar": "Find similar code",
+      "slot_source": "Read a slot's source",
+      "slot_status": "formslot status",
+      "slot_suggest": "Suggest slot candidates",
+      "slot_usages": "Find usages"
+    },
+    "tools": [
+      "slot_find",
+      "slot_get",
+      "slot_source",
+      "slot_usages",
+      "slot_similar",
+      "slot_context_pack",
+      "slot_conventions",
+      "slot_status",
+      "slot_reindex",
+      "slot_recall",
+      "slot_remember",
+      "slot_suggest",
+      "slot_drift"
+    ],
+    "transports": [
+      "stdio",
+      "http"
+    ]
+  },
+  "skills": [
+    {
+      "name": "formslot-lookup",
+      "sub_skills": []
+    }
+  ],
+  "version": 1
+}

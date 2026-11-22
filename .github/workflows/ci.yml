@@ -44,6 +44,8 @@ jobs:
           "$stage/formslot" version
       - name: The launcher runs the program the release script built
         run: ./formslot version
+      - name: The written tool list matches the tool definitions
+        run: ./formslot agents sync --check
       - name: The launcher builds and runs in CARGO_TARGET_DIR, and runs that build with cargo off PATH
         run: |
           export CARGO_TARGET_DIR="$RUNNER_TEMP/formslot-target"
