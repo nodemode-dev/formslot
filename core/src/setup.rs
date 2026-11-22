@@ -108,6 +108,10 @@ fn hint(tool: &str, os: Os) -> String {
         ("gitleaks", Os::Debian) => "sudo apt install gitleaks (newer releases), or download it from https://github.com/gitleaks/gitleaks/releases".into(),
         ("gitleaks", Os::Windows) => "winget install gitleaks.gitleaks".into(),
         ("gitleaks", _) => "download it from https://github.com/gitleaks/gitleaks/releases".into(),
+        ("codex", _) => "npm install -g @openai/codex".into(),
+        ("cursor-agent", _) => "curl https://cursor.com/install -fsS | bash".into(),
+        ("agy", Os::Windows) => "irm https://antigravity.google/cli/install.ps1 | iex".into(),
+        ("agy", _) => "curl -fsSL https://antigravity.google/cli/install.sh | bash".into(),
         _ => String::new(),
     }
 }
@@ -157,6 +161,27 @@ pub fn check_tools() -> Vec<ToolCheck> {
             purpose: "gitleaks looks for passwords and keys that were saved into a project by mistake",
             found: found("gitleaks"),
             hint: hint("gitleaks", os),
+        },
+        ToolCheck {
+            name: "codex",
+            need: Need::Optional,
+            purpose: "Codex can use formslot's tools once you run `formslot connect codex`",
+            found: found("codex"),
+            hint: hint("codex", os),
+        },
+        ToolCheck {
+            name: "cursor-agent",
+            need: Need::Optional,
+            purpose: "Cursor can use formslot's tools once you run `formslot connect cursor`",
+            found: found("cursor-agent"),
+            hint: hint("cursor-agent", os),
+        },
+        ToolCheck {
+            name: "agy",
+            need: Need::Optional,
+            purpose: "Antigravity can use formslot's tools once you run `formslot connect antigravity`",
+            found: found("agy"),
+            hint: hint("agy", os),
         },
     ]
 }
