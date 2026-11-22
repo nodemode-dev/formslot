@@ -100,7 +100,7 @@
 
 ## Built for agents
 
-FormSlot has 9 MCP tools (`slot_find`, `slot_get`, `slot_source`, `slot_context_pack` and five more) that read the same store as the CLI and the Claude Code hooks.
+FormSlot has 13 MCP tools (`slot_find`, `slot_get`, `slot_source`, `slot_context_pack` and nine more) over the same store as the CLI and the Claude Code hooks. Eleven only read; `slot_reindex` and `slot_remember` write formslot's own store and nothing else. The server speaks MCP revision 2026-07-28 and the earlier handshake revisions back to 2024-11-05. [`agents/manifest.json`](agents/manifest.json) lists every tool with its class.
 
 ```sh
 formslot add ~/code/my-repo                       # index a repository at HEAD
