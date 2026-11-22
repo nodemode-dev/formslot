@@ -1,6 +1,6 @@
 # formslot contract
 
-The interface subform, Claude Code hooks, formMCP and any other client build against. Sync point C1 in `PARALLEL_BUILD.md`. A change to this file after v0.2.0 needs a revision line at the bottom and a matching note in both plans.
+The interface formsubstrate (Substrate), Claude Code hooks, formMCP and any other client build against. Sync point C1 in `PARALLEL_BUILD.md`. A change to this file after v0.2.0 needs a revision line at the bottom and a matching note in both plans.
 
 Contract version: 1 · formslot v0.2.0
 
@@ -9,7 +9,7 @@ Contract version: 1 · formslot v0.2.0
 | Block | Use |
 | --- | --- |
 | 5640 to 5649 | formslot. 5645 is the HTTP service; 5640 and 5641 are kept for a window, if one is ever made |
-| 5650 to 5659 | subform. 5650 Vite, 5651 preview, 5655 engine |
+| 5650 to 5659 | formsubstrate (Substrate). 5650 Vite, 5651 preview, 5655 engine |
 | 5620 to 5625, 5630 to 5631 | formMCP and formskills, never used here |
 
 `FORMSLOT_PORT` overrides 5645; `0` asks the system for a free port. The port actually bound is always the one in the discovery file.
@@ -49,7 +49,7 @@ A client reads it, checks that `pid` is alive, and sends `Authorization: Bearer 
 ## HTTP
 
 - Listens on 127.0.0.1 only. Never another address.
-- Every request needs `Authorization: Bearer <token>` (401 otherwise), a `Host` of `127.0.0.1:<port>` or `localhost:<port>` (421 otherwise), and, when an `Origin` header is present, an origin of `http://127.0.0.1:<port>` or `http://localhost:<port>` (403 otherwise). Clients are processes (subform's engine, hooks, the command line, formMCP), never page script: the token stays out of any page's JavaScript.
+- Every request needs `Authorization: Bearer <token>` (401 otherwise), a `Host` of `127.0.0.1:<port>` or `localhost:<port>` (421 otherwise), and, when an `Origin` header is present, an origin of `http://127.0.0.1:<port>` or `http://localhost:<port>` (403 otherwise). Clients are processes (formsubstrate's engine, hooks, the command line, formMCP), never page script: the token stays out of any page's JavaScript.
 - A request target must start with `/`. Host, Origin, Authorization, Content-Length and Transfer-Encoding may each appear once; a second copy is 400. Chunked bodies are 400.
 - Bodies are JSON, UTF-8, at most 1 MiB in. Errors are `{"error": "<code>", "message": "<sentence>"}`.
 - Limits (v0.10.2): at most 64 connections are served at once (a 65th gets 503 `busy` with `Retry-After: 1`); the first byte of a request must arrive within 5 seconds and the request must be read completely within 15 seconds of that first byte (408 `request_timeout` for either); a reply that cannot be written within 30 seconds is dropped. A route that is running when the deadline passes is not cut short.
@@ -340,3 +340,4 @@ These land in later phases; names and shapes are fixed here and change only with
 - 1 · 2026-10-31 · v0.16.0, additive (slot suggest): the command `formslot slot suggest <corpus> [--limit N] [--min-copies K] [--json] [--write DIR]` ranks reusable-component candidates from the clone groups (T1 to T3), `related-similar` pairs and caller edges of one corpus, and drafts a manifest per candidate that validates against `slot.schema.json` (status proposed, origin at the indexed commit, hashed files, exports, copies with an added `sha256`, `meta.suggest` with the reason line); files already in any slot or copying a slot file are not suggested again; `--write DIR` saves `<id>.json` drafts for review and `slot propose`; read-only, nothing is proposed or confirmed; no existing route, command, field or tool changes
 - 1 · 2026-11-01 · v0.16.0, MCP result shapes: `slot_context_pack` returns no `structuredContent`; `slot_conventions` recalls `rule` and `declined` records separately; paged structured results carry `more`; `slot_get` carries `dependsOn`; `slot_reindex` carries `note`; no tool, argument or route changes
 - 1 · 2026-11-01 · v0.16.0, dense fusion: the dense list is fused into the code-unit lists before the global fusion and cannot outrank memory, rule or slot hits; the `dense` arm of `formslot eval` uses it; dense stays opt-in; no command, route or field changes
+- 1 · 2026-11-21 · v0.16.0, wording: the editor client is named formsubstrate (the app Substrate, earlier subform); its ports 5650 to 5659 are unchanged; no command, route or field changes

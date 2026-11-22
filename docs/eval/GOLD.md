@@ -61,6 +61,8 @@ Each question is a request a developer could put to an agent before the change e
 | formslot | 33 | 14 | 4 | 8 | 7 |
 | formvis | 13 | 9 | 4 | 0 | 0 |
 
+The corpus id `subform` keeps the editor's earlier name: the editor is now FormSubstrate (the app Substrate), and the sets and reports are left as they were measured.
+
 ### Weaknesses specific to this set
 
 - The corpus label `formslot` for convention and decline lines drawn from `data/declines.json` (two formMCP declines, `h081` and `h082`) is a convenience: those rules belong to formMCP and live in formslot's data folder.
