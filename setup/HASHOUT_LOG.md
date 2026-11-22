@@ -113,3 +113,11 @@ The file carried the family template's lines for Node, Python and a Tauri shell 
 - logged: v0.16.4 · 2026-11-22
 
 The Linux and Windows release jobs now also run `formslot version` through the launcher after the release script has built the program, and once more with cargo off PATH. The Linux job also sets `CARGO_TARGET_DIR` to a folder outside the checkout and checks that the launcher built there. The Windows steps have not run anywhere yet; the first run on GitHub is their test.
+
+### CHANGELOG.md · a section with every release
+
+- refers-to: CHANGELOG.md
+- kind: rationale
+- logged: v0.18.2 · 2026-11-22
+
+There was no changelog: the version notes left the README at the overhaul, and 0.16.1 to 0.16.3 lived only in commits and log entries. The file starts at 0.16.0 and was written from `git log` (subjects of the commits between release commits), in words for a person who uses formslot, not for one who reads the code. 0.16.1 has no commit on `main` (the overhaul commit moved the version from 0.16.0 to 0.16.2), and the file says so and guesses nothing. From here the release commit adds its section, and the development skill lists the changelog beside the five version sites. Dates are US Eastern, as on the commits.
