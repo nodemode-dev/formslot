@@ -111,6 +111,8 @@ formslot mcp                                      # MCP server on stdio for Clau
 
 `formslot install <repo>` writes the plugin files and hooks into a repository: a map digest at session start, a reuse and declined-feature check before every write, and a duplicate audit at stop. See [`AGENTS.md`](AGENTS.md) and [`docs/CONTRACT.md`](docs/CONTRACT.md).
 
+Nothing leaves your computer unless you run one of three commands yourself: `pack --count remote` sends the pack text and your Anthropic key to `api.anthropic.com` for a token count, `dense fetch --yes` downloads a model from `huggingface.co`, and `eval --arm model` runs `claude` on your Claude Code login. [`docs/GUIDE.md`](docs/GUIDE.md) says what each one sends, and [`SECURITY.md`](SECURITY.md) how the local service is guarded.
+
 ## Under the hood
 
 - **Workspace:** Rust 2024 with two crates, `formslot-core` and `formslot-cli`.

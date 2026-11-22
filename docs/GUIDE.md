@@ -2,7 +2,15 @@
 
 ## What formslot does for you
 
-formslot keeps a small, private memory of your projects on your own computer: the code that already exists, where it lives and the rules you have set for it. When you work in Claude Code it quietly tells Claude about what already exists, so Claude reuses it instead of writing it again. It also stops Claude from rebuilding things you have said you do not want. Nothing leaves your computer.
+formslot keeps a small, private memory of your projects on your own computer: the code that already exists, where it lives and the rules you have set for it. When you work in Claude Code it quietly tells Claude about what already exists, so Claude reuses it instead of writing it again. It also stops Claude from rebuilding things you have said you do not want.
+
+Nothing leaves your computer unless you run one of three commands yourself. None of them runs on its own, and setup runs none of them:
+
+- `formslot pack "<task>" --count remote` sends the whole pack text (your task, the code excerpts and the rules in it) and your Anthropic key to `api.anthropic.com`, which answers with a token count. Without `--count remote`, a pack is counted on your computer and nothing is sent.
+- `formslot dense fetch --yes` downloads a search model (about 154 MB) from `huggingface.co`. It sends nothing of yours; like any download, that site sees your network address. It exists only in a build made with the optional dense feature, which the released program is not.
+- `formslot eval --arm model` runs the `claude` program on your Claude Code login. The evaluation tasks, the packs built for them and whatever Claude reads from a read-only copy of your project go to Anthropic through Claude Code, and the run costs money on that account.
+
+One more thing to know: what formslot tells Claude Code (the map at the start of a session, a reuse note, a pack) becomes part of your Claude Code conversation, and that conversation goes to Anthropic the way every Claude Code conversation does. formslot has no account, no telemetry and no update check.
 
 ## Install
 
