@@ -52,7 +52,7 @@ Read `CLAUDE.md` first: it holds the owner's rules. This skill is the map that g
 - `setup/build_release` stages `dist/formslot-vX.Y.Z-OS-ARCH/` with the program, the plugin, `data/`, LICENSE, NOTICE and README, and writes the archive and its checksums. On macOS `--dmg` also packs a disk image; on Windows `setup\build_release.bat --no-sums` is what formcompiler runs.
 - `setup/package_skill [FOLDER]` runs the skill gates on one skill folder and packs it.
 - `formslot agents sync --check` fails while `agents/manifest.json` differs from the definitions.
-- A change to anything that crosses systems is type-checked for the Windows and macOS targets with `cargo check --locked --target ...` before it is handed over, or the hand-back says "Not run".
+- A change to anything that crosses systems is type-checked for the Windows and macOS targets before it is handed over, or the hand-back says "Not run". On Linux with no Apple or Microsoft C tools, zig compiles the C of SQLite, tree-sitter and ring: `pip install ziglang` and `cargo install --locked cargo-zigbuild`, put the `ziglang` folder on PATH, then `cargo-zigbuild check --locked --target T` for `aarch64-apple-darwin`, `x86_64-apple-darwin` and `x86_64-pc-windows-gnu`. `x86_64-pc-windows-msvc` stops in ring's C build without Microsoft's headers; formslot's Rust has no code that differs between the two Windows targets.
 
 ## Evaluation
 

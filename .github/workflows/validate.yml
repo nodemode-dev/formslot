@@ -33,9 +33,9 @@ jobs:
           python-version: '3.12'
       - name: The reference skill validator
         run: |
-          python -m pip install --quiet skills-ref
+          python -m pip install --quiet skills-ref==0.1.1
           for skill in plugin/formslot/skills/*/ .claude/skills/*/; do
-            skills-ref validate "$skill"
+            agentskills validate "$skill"
           done
 
   plugin:
