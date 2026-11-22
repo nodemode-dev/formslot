@@ -124,4 +124,4 @@ formslot setup --remove    # guided undo, each step asked and skippable
 
 ## Where your data lives
 
-Everything is in `~/.formslot` (on Windows, `.formslot` in your user folder). It holds the index database, the service file, the log, and small state files for the hooks. Set `FORMSLOT_DATA_DIR` to use another folder. formslot never changes your project's source; inside a project it writes only `.claude/settings.json` (merged, other keys kept), `.mcp.json`, and `slots.lock.json` when you apply slots.
+Everything is in `~/.formslot` (on Windows, `.formslot` in your user folder). It holds the index database, the service file, the log, and small state files for the hooks. Set `FORMSLOT_DATA_DIR` to use another folder. formslot never changes your project's source; inside a project it writes only `.claude/settings.json` (merged, other keys kept), `.mcp.json`, the lookup skill at `.claude/skills/formslot-lookup/SKILL.md`, the scout agent at `.claude/agents/formslot-scout.md`, and `slots.lock.json` when you apply slots. If you change the skill or the agent by hand, formslot leaves your version alone from then on.
