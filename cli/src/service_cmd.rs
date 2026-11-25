@@ -55,6 +55,14 @@ fn live() -> Option<ServiceInfo> {
     (discovery::pid_alive(info.pid) && health(&info).is_ok()).then_some(info)
 }
 
+fn port_taken(port: u16) -> bool {
+    port != 0 && std::net::TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)).is_err()
+}
+
+fn port_advice(port: u16) -> String {
+    format!("127.0.0.1:{port} is in use by another program, so the service cannot start there; set FORMSLOT_PORT to another port, or 0 for a free one")
+}
+
 pub fn serve(args: &[String]) -> ExitCode {
     if let Some(other) = args.iter().find(|a| *a != "--detach") {
         eprintln!("formslot: serve takes only --detach (got {other})");
@@ -160,6 +168,10 @@ pub fn start() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         match child.try_wait() {
+            Ok(Some(status)) if !status.success() && port_taken(config::port()) => {
+                eprintln!("formslot: {}", port_advice(config::port()));
+                return ExitCode::FAILURE;
+            }
             Ok(Some(status)) if !status.success() => {
                 eprintln!("formslot: the service exited at start ({status}); run `formslot serve` in a terminal to see why");
                 return ExitCode::FAILURE;
@@ -445,7 +457,12 @@ pub fn doctor(args: &[String]) -> ExitCode {
         Err(e) => report.problem("data folder", &format!("{} is not writable ({e})", dir.display())),
     }
     modes(&mut report, &dir);
-    report.line("port", &config::port().to_string());
+    let port = config::port();
+    if port_taken(port) && !live().is_some_and(|info| info.port == port) {
+        report.warn("port", &port_advice(port));
+    } else {
+        report.line("port", &port.to_string());
+    }
     match Command::new("git").arg("--version").output() {
         Ok(out) if out.status.success() => report.line("git", String::from_utf8_lossy(&out.stdout).trim()),
         _ => report.problem("git", "not found on PATH (formslot needs it to index repositories)"),

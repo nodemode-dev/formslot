@@ -132,7 +132,7 @@ formslot setup --remove    # guided undo, each step asked and skippable
 
 **The service is not running.** Run `formslot status`, then `formslot start`. `formslot doctor` explains any problem it finds and exits with 1 when something real is wrong.
 
-**The port is in use.** formslot uses port 5645. If another program has it, choose another before starting: `FORMSLOT_PORT=5700 formslot start` (in PowerShell: `$env:FORMSLOT_PORT = 5700; formslot start`). `FORMSLOT_PORT=0` lets the system pick a free port. Use the same value for later commands.
+**The port is in use.** formslot uses port 5645. If another program has it, `formslot start` and `formslot doctor` say so. Choose another port before starting: `FORMSLOT_PORT=5700 formslot start` (in PowerShell: `$env:FORMSLOT_PORT = 5700; formslot start`). `FORMSLOT_PORT=0` lets the system pick a free port. Use the same value for later commands.
 
 ## Where your data lives
 
