@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 0.18.2" src="https://img.shields.io/badge/version-0.18.2-eef0f4?style=flat-square">
+  <img alt="version 0.18.3" src="https://img.shields.io/badge/version-0.18.3-eef0f4?style=flat-square">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-1.90%2B-dea584?style=flat-square&logo=rust&logoColor=white">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-bundled-0f80cc?style=flat-square">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -161,7 +161,7 @@ On Windows use `formslot_oc_install.bat` and `formslot.bat`. New users can doubl
 > [!IMPORTANT]
 > **Status:** release. The dense search tier is opt-in and off by default. See [`docs/eval`](docs/eval) for the reports.
 
-**Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to formcompiler. See [`AGENTS.md`](AGENTS.md).
+**Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to formcompiler. See [`CONTRIBUTING.md`](CONTRIBUTING.md), the [code of conduct](CODE_OF_CONDUCT.md) and [`AGENTS.md`](AGENTS.md).
 
 ## Repository
 

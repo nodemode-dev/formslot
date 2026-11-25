@@ -1176,7 +1176,7 @@ The cap is a process-wide counter taken in the accept loop (64) and given back w
 - kind: explainer
 - logged: v0.10.2 · 2026-10-30
 
-The pattern is substrata `core/binres.py` (MIT, owner's; /home/claude/ref2/backend/app/core/binres.py): one choke point so packaging changes where a program lives without touching feature code. Order here: `FORMSLOT_<NAME>_BIN`, then `<data folder>/bin/`, then PATH. An environment override that is set but not an executable file is not found, and does not fall back, so a typo is visible rather than silently using another program. `command` returns the bare name when nothing is found so the existing "cannot run" error text still appears. Used by hygiene.rs (gitleaks), eval.rs (rg) and dense/fetch.rs (curl). `FORMSLOT_BIN_DIR`, which only gitleaks read, is retired in favour of `<data folder>/bin/`.
+The pattern is substrata `core/binres.py` (MIT, owner's; `backend/app/core/binres.py` there): one choke point so packaging changes where a program lives without touching feature code. Order here: `FORMSLOT_<NAME>_BIN`, then `<data folder>/bin/`, then PATH. An environment override that is set but not an executable file is not found, and does not fall back, so a typo is visible rather than silently using another program. `command` returns the bare name when nothing is found so the existing "cannot run" error text still appears. Used by hygiene.rs (gitleaks), eval.rs (rg) and dense/fetch.rs (curl). `FORMSLOT_BIN_DIR`, which only gitleaks read, is retired in favour of `<data folder>/bin/`.
 
 ### core/src/install.rs · launcher_path, is_ours
 
