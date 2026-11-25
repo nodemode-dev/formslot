@@ -161,7 +161,7 @@ On Windows use `formslot_oc_install.bat` and `formslot.bat`. New users can doubl
 > [!IMPORTANT]
 > **Status:** release. The dense search tier is opt-in and off by default. See [`docs/eval`](docs/eval) for the reports.
 
-**Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to formcompiler. See [`AGENTS.md`](AGENTS.md).
+**Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to formcompiler. See [`CONTRIBUTING.md`](CONTRIBUTING.md), the [code of conduct](CODE_OF_CONDUCT.md) and [`AGENTS.md`](AGENTS.md).
 
 ## Repository
 
