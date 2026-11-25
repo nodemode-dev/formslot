@@ -1,6 +1,6 @@
 # Gold set for code retrieval over formvis
 
-`gold.jsonl` holds 147 questions, one JSON object per line, in the shape of CONTRACT_T6 section A. The corpus is formvis at the indexed HEAD (`/home/claude/ref/formvis`, 1577 commits).
+`gold.jsonl` holds 147 questions, one JSON object per line, in the shape of CONTRACT_T6 section A. The corpus is formvis at the indexed HEAD (a local clone, 1577 commits).
 
 ## How it was built
 
