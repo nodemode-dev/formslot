@@ -41,6 +41,9 @@ jobs:
           tar -tzf "$stage.tar.gz" | grep -qx "$(basename "$stage")/formslot"
           ( cd "$stage" && sha256sum --check --quiet SHA256SUMS )
           ( cd dist && sha256sum --check --quiet "$(basename "$stage").tar.gz.sha256" )
+          unzip -Z1 "$stage.zip" | grep -qx "$(basename "$stage")/formslot"
+          unzip -Z1 "$stage.zip" | grep -qx "$(basename "$stage")/Install formslot.command"
+          ( cd dist && sha256sum --check --quiet "$(basename "$stage").zip.sha256" )
           "$stage/formslot" version
       - name: The launcher runs the program the release script built
         run: ./formslot version

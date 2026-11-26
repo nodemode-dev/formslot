@@ -6,6 +6,7 @@ cd "$root"
 usage() {
   cat <<'USAGE'
 setup/build_release          build the release binary and stage dist/formslot-vX.Y.Z-<os>-<arch>/ and its .tar.gz
+                             on Linux, also dist/formslot-vX.Y.Z-linux-<arch>.zip, the file FormPortal installs (needs zip)
   --dmg                      on macOS, also pack the staged folder into dist/formslot-vX.Y.Z-macos-<arch>.dmg
   FORMSLOT_DIST_DIR=<dir>    stage somewhere other than ./dist
   CARGO_TARGET_DIR=<dir>     build somewhere other than ./target
@@ -58,7 +59,8 @@ fi
 dist="${FORMSLOT_DIST_DIR:-$root/dist}"
 name="formslot-v$version-$os-$arch"
 stage="$dist/$name"
-rm -rf "$stage" "$dist/$name.tar.gz" "$dist/$name.dmg"
+rm -rf "$stage" "$dist/$name.tar.gz" "$dist/$name.dmg" "$dist/$name.zip" "$dist/$name.zip.sha256"
+[ "$os" != linux ] || command -v zip >/dev/null || die "zip is required for the Linux .zip (for example: sudo apt install zip)"
 mkdir -p "$stage/plugin" "$stage/data"
 
 cp "$bin" "$stage/formslot"
@@ -78,10 +80,15 @@ if command -v sha256sum >/dev/null; then sum() { sha256sum "$@"; }; else sum() {
 
 ( cd "$dist" && tar -czf "$name.tar.gz" "$name" )
 ( cd "$dist" && sum "$name.tar.gz" > "$name.tar.gz.sha256" )
+if [ "$os" = linux ]; then
+  ( cd "$dist" && zip -q -r -y -X "$name.zip" "$name" )
+  ( cd "$dist" && sum "$name.zip" > "$name.zip.sha256" )
+fi
 if [ "$dmg" = 1 ]; then
   hdiutil create -quiet -volname "$name" -srcfolder "$stage" -ov -format UDZO "$dist/$name.dmg"
 fi
 
 say "staged $stage"
 say "archive $dist/$name.tar.gz"
+[ "$os" != linux ] || say "zip $dist/$name.zip"
 [ "$dmg" = 0 ] || say "disk image $dist/$name.dmg"
