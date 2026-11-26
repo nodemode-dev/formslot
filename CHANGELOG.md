@@ -2,6 +2,11 @@
 
 Versions are written `vX.Y.Z` with dots. Dates are US Eastern. Each section is written from `git log`; the reasons behind a change are in the `HASHOUT_LOG.md` beside the code. This file starts at 0.16.0; earlier versions are in the git history.
 
+## 0.18.4 · 2026-11-25
+
+- FormSlot can be installed from FormPortal on Linux. The Linux release gains a `.zip` of the same folder the `.tar.gz` holds; FormPortal reads a Linux `.zip` and not a `.tar.gz`, so until now it said "Not built for this computer yet". The `.tar.gz` is still there for a download by hand.
+- Nothing changes in the program itself, or on macOS and Windows.
+
 ## 0.18.3 · 2026-11-25
 
 - With another program on port 5645, `formslot start` now says so and how to choose another port, where it only said the service exited. `formslot doctor` reports the same as a warning; before, it found nothing wrong.

@@ -121,3 +121,15 @@ The Linux and Windows release jobs now also run `formslot version` through the l
 - logged: v0.18.2 · 2026-11-22
 
 There was no changelog: the version notes left the README at the overhaul, and 0.16.1 to 0.16.3 lived only in commits and log entries. The file starts at 0.16.0 and was written from `git log` (subjects of the commits between release commits), in words for a person who uses formslot, not for one who reads the code. 0.16.1 has no commit on `main` (the overhaul commit moved the version from 0.16.0 to 0.16.2), and the file says so and guesses nothing. From here the release commit adds its section, and the development skill lists the changelog beside the five version sites. Dates are US Eastern, as on the commits.
+
+### setup/build_release · the Linux .zip
+
+- refers-to: setup/build_release :: the zip step; .github/workflows/ci.yml :: release-linux (The archive holds the program, and its checksums hold)
+- kind: rationale
+- logged: v0.18.4 · 2026-11-25
+
+On Linux, FormPortal listed FormSlot as "Not built for this computer yet". The Linux build was there, as a `.tar.gz`, but formcompiler's catalogue and FormPortal both leave `.tar.gz` files out of what can be installed (for apps with a window that ending is the updater's file), and both already read a `.zip` whose name says `linux`. A new file kind in the catalogue was the other way and was not taken: FormPortal versions already on people's computers would meet a kind they do not know.
+
+So on Linux the script also packs the staged folder into `dist/formslot-vX.Y.Z-linux-<arch>.zip`, with `zip -r -y -X` (links kept as links, no extra attributes) run from `dist`, so the zip holds the one folder the `.tar.gz` holds and the file modes of `formslot`, `formslot_oc_install` and `Install formslot.command` (755) ride in it. FormPortal's unpacker restores those modes, finds `Install formslot.command` one folder down, and Open runs it in a terminal. `zip` is asked for before the build starts, with the line that says how to install it, so a missing tool costs no compile. The `.tar.gz` stays for a download by hand. macOS is unchanged (its installable file is the disk image) and so is Windows.
+
+The check in ci.yml that already opened the `.tar.gz` now also reads the zip's listing for the program and the installer, and checks the zip's `.sha256`.
